@@ -19,6 +19,18 @@ const QUESTIONS = [
     options: ['1-2 hours', '3-5 hours', '5+ hours']
   },
   {
+    id: 'preferences',
+    question: 'Any specific preferences? (You can adjust these later)',
+    type: 'text',
+    placeholder: 'e.g., I prefer free tools, love tools with great tutorials, avoid subscription-only services'
+  },
+  {
+    id: 'existing_tools',
+    question: 'Share some tools you've enjoyed or been meaning to try',
+    type: 'text',
+    placeholder: 'e.g., Figma, Framer, Midjourney, Runway'
+  },
+  {
     id: 'goal',
     question: 'What do you want to achieve in 4 weeks?',
     type: 'text',
