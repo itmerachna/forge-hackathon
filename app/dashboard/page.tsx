@@ -182,7 +182,10 @@ export default function Dashboard() {
                 <a href={tool.website} target="_blank" rel="noopener noreferrer" className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded text-sm font-semibold transition">
                   Visit Tool
                 </a>
-                <button className="border border-gray-600 hover:border-gray-500 px-4 py-2 rounded text-sm transition">
+                <button
+                  onClick={() => alert(`Great! You tried ${tool.name}. Full tracking coming in Week 2!`)}
+                  className="border border-gray-600 hover:border-gray-500 px-4 py-2 rounded text-sm transition"
+                  >
                   Mark as Tried
                 </button>
               </div>
