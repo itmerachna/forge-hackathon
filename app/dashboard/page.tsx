@@ -97,6 +97,8 @@ const SAMPLE_TOOLS = [
 export default function Dashboard() {
   const [userProfile, setUserProfile] = useState<Record<string, string> | null>(null);
   const [loading, setLoading] = useState(true);
+  const [triedTools, setTriedTools] = useState<number[]>([]);
+  const [toast, setToast] = useState<{show: boolean; message: string}>({show: false, message: ''});
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -104,9 +106,41 @@ export default function Dashboard() {
       if (profile) {
         setUserProfile(JSON.parse(profile));
       }
+      
+      // Load tried tools from localStorage
+      const tried = localStorage.getItem('triedTools');
+      if (tried) {
+        setTriedTools(JSON.parse(tried));
+      }
+      
       setLoading(false);
     }
   }, []);
+
+  const handleMarkAsTried = (toolId: number, toolName: string) => {
+    if (triedTools.includes(toolId)) {
+      // Already tried
+      showToast(`You already marked ${toolName} as tried!`);
+      return;
+    }
+    
+    const newTriedTools = [...triedTools, toolId];
+    setTriedTools(newTriedTools);
+    
+    // Save to localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('triedTools', JSON.stringify(newTriedTools));
+    }
+    
+    showToast(`✅ Great! You tried ${toolName}`);
+  };
+
+  const showToast = (message: string) => {
+    setToast({show: true, message});
+    setTimeout(() => {
+      setToast({show: false, message: ''});
+    }, 3000);
+  };
 
   if (loading) {
     return (
@@ -121,6 +155,13 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className="fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-slide-in">
+          {toast.message}
+        </div>
+      )}
+      
       <nav className="border-b border-gray-800 p-6">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -145,7 +186,7 @@ export default function Dashboard() {
               <>Personalized recommendations for you</>
             )}
           </p>
-          <div className="mt-4 flex gap-2 text-sm">
+          <div className="mt-4 flex flex-wrap gap-2 text-sm">
             <span className="bg-gray-800 px-3 py-1 rounded-full">
               {userProfile?.focus || 'All categories'}
             </span>
@@ -159,46 +200,62 @@ export default function Dashboard() {
         </div>
         
         <div className="grid md:grid-cols-2 gap-6">
-          {SAMPLE_TOOLS.map((tool) => (
-            <div key={tool.id} className="bg-gray-800 border border-gray-700 rounded-lg p-6 hover:border-orange-500 transition">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-xl font-bold mb-1">{tool.name}</h3>
-                  <span className="text-sm text-gray-400">{tool.category}</span>
+          {SAMPLE_TOOLS.map((tool) => {
+            const isTried = triedTools.includes(tool.id);
+            
+            return (
+              <div key={tool.id} className="bg-gray-800 border border-gray-700 rounded-lg p-6 hover:border-orange-500 transition">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <h3 className="text-xl font-bold mb-1">{tool.name}</h3>
+                    <span className="text-sm text-gray-400">{tool.category}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded">
+                      {tool.pricing}
+                    </span>
+                    <span className="bg-blue-500/20 text-blue-400 text-xs px-2 py-1 rounded">
+                      {tool.difficulty}
+                    </span>
+                  </div>
                 </div>
+                
+                <p className="text-gray-300 mb-4">{tool.description}</p>
+                
                 <div className="flex gap-2">
-                  <span className="bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded">
-                    {tool.pricing}
-                  </span>
-                  <span className="bg-blue-500/20 text-blue-400 text-xs px-2 py-1 rounded">
-                    {tool.difficulty}
-                  </span>
+                  <a href={tool.website} target="_blank" rel="noopener noreferrer" className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded text-sm font-semibold transition">
+                    Visit Tool
+                  </a>
+                  <button 
+                    onClick={() => handleMarkAsTried(tool.id, tool.name)}
+                    className={`px-4 py-2 rounded text-sm transition ${
+                      isTried 
+                        ? 'bg-green-500/20 text-green-400 border border-green-500' 
+                        : 'border border-gray-600 hover:border-gray-500'
+                    }`}
+                  >
+                    {isTried ? '✓ Tried' : 'Mark as Tried'}
+                  </button>
                 </div>
               </div>
-              
-              <p className="text-gray-300 mb-4">{tool.description}</p>
-              
-             <div className="flex gap-2">
-                <a href={tool.website} target="_blank" rel="noopener noreferrer" className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded text-sm font-semibold transition">
-                  Visit Tool
-                </a>
-                <button
-                  onClick={() => alert(`Great! You tried ${tool.name}. Full tracking coming in Week 2!`)}
-                  className="border border-gray-600 hover:border-gray-500 px-4 py-2 rounded text-sm transition">
-                  Mark as Tried
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="mt-12 bg-gray-800/50 border border-gray-700 rounded-lg p-8 text-center">
           <h3 className="text-xl font-bold mb-2">🎯 Your Weekly Goal</h3>
           <p className="text-gray-400 mb-4">Try at least 2 tools this week to unlock next week's recommendations</p>
           <div className="flex items-center justify-center gap-4">
-            <div className="text-2xl font-bold text-orange-500">0/2</div>
+            <div className={`text-2xl font-bold ${triedTools.length >= 2 ? 'text-green-500' : 'text-orange-500'}`}>
+              {triedTools.length}/2
+            </div>
             <div className="text-gray-400">tools tried</div>
           </div>
+          {triedTools.length >= 2 && (
+            <div className="mt-4 text-green-400 font-semibold">
+              🎉 Goal achieved! Keep going!
+            </div>
+          )}
         </div>
       </main>
     </div>
