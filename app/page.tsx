@@ -21,10 +21,17 @@ export default function Home() {
         </p>
         
         <a 
-          href="/onboarding"
-          className="bg-orange-500 hover:bg-orange-600 px-8 py-4 rounded-lg text-lg font-semibold inline-block transition"
+          <button 
+          onClick={() => {
+            if (typeof window !== 'undefined') {
+              const profile = localStorage.getItem('userProfile');
+              window.location.href = profile ? '/dashboard' : '/onboarding';
+            }
+          }}
+          className="bg-orange-500 hover:bg-orange-600 px-8 py-4 rounded-lg text-lg font-semibold inline-block transition cursor-pointer"
         >
           Start Forging
+        </button>
         </a>
         
         <div className="mt-20 grid md:grid-cols-3 gap-8">
