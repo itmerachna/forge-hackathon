@@ -184,8 +184,7 @@ export default function Dashboard() {
                 </a>
                 <button
                   onClick={() => alert(`Great! You tried ${tool.name}. Full tracking coming in Week 2!`)}
-                  className="border border-gray-600 hover:border-gray-500 px-4 py-2 rounded text-sm transition"
-                  >
+                  className="border border-gray-600 hover:border-gray-500 px-4 py-2 rounded text-sm transition">
                   Mark as Tried
                 </button>
               </div>
