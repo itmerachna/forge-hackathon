@@ -29,21 +29,13 @@ export default function Home() {
         <p className="max-w-xl text-lg md:text-xl text-magnolia/60 font-light mb-12 leading-relaxed">
           Your personal AI agent for curated AI tool discovery, daily accountability, and deep reflection on your digital craft. Let Forge help you actually master the tools you bookmark.
         </p>
-        <div className="flex flex-col md:flex-row gap-4">
-          <a
-            href="/onboarding"
-            className="px-8 py-4 bg-phoenix text-white font-medium text-lg rounded-full hover:bg-orange-600 transition-colors shadow-glow flex items-center gap-2 group"
-          >
-            Begin Onboarding
-            <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
-          </a>
-          <a
-            href="/onboarding"
-            className="px-8 py-4 border border-white/20 text-white font-medium text-lg rounded-full hover:bg-white/5 transition-colors"
-          >
-            Login or Sign Up
-          </a>
-        </div>
+        <a
+          href="/onboarding"
+          className="px-8 py-4 bg-phoenix text-white font-medium text-lg rounded-full hover:bg-orange-600 transition-colors shadow-glow flex items-center gap-2 group"
+        >
+          Begin Onboarding
+          <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+        </a>
       </div>
 
       {/* Abstract Visuals */}
