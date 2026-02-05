@@ -1,44 +1,25 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Sparkle,
   DotsThree,
-  Microphone,
   PaperPlaneRight,
   Code,
+  Target,
+  Lightning,
 } from '@phosphor-icons/react';
 import Sidebar from '../components/Sidebar';
-
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  isStreaming?: boolean;
-  suggestions?: string[];
-}
+import type { ChatMessage } from '../../types';
+import { getGreeting, generateId } from '../../lib/utils';
 
 export default function Overview() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      role: 'assistant',
-      content: "Good morning, Alex. Based on your activity, you were exploring Python libraries yesterday. Did you manage to set up the environment?"
-    },
-    {
-      id: '2',
-      role: 'user',
-      content: "Yes, I did! But I'm stuck on choosing the right visualization library. Any suggestions?"
-    },
-    {
-      id: '3',
-      role: 'assistant',
-      content: "For Python, it depends on your needs:\n\n1. Matplotlib: The standard, good for basics.\n2. Seaborn: Built on top of Matplotlib, better default aesthetics.\n3. Plotly: Excellent for interactive web-based charts.\n\nGiven you like minimal design, I'd suggest starting with Seaborn or Plotly. Shall I show you a comparison?",
-      suggestions: ['Show Comparison', 'Give me code snippets']
-    }
-  ]);
+  const [userProfile, setUserProfile] = useState<Record<string, string> | null>(null);
+  const [triedTools, setTriedTools] = useState<number[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -49,66 +30,180 @@ export default function Overview() {
   }, [messages]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const savedMessages = localStorage.getItem('overviewChatMessages');
-      if (savedMessages) {
-        setMessages(JSON.parse(savedMessages));
-      }
+    if (typeof window === 'undefined') return;
+
+    const profile = localStorage.getItem('userProfile');
+    const parsedProfile = profile ? JSON.parse(profile) : null;
+    setUserProfile(parsedProfile);
+
+    const tried = localStorage.getItem('triedTools');
+    if (tried) setTriedTools(JSON.parse(tried));
+
+    const savedMessages = localStorage.getItem('overviewChatMessages');
+    if (savedMessages) {
+      setMessages(JSON.parse(savedMessages));
+    } else {
+      setMessages([
+        {
+          id: generateId(),
+          role: 'assistant',
+          content: `${getGreeting()} This is your overview space. I can help you reflect on your progress, plan projects, or dive deeper into any tool you're exploring. What's on your mind?`,
+          suggestions: ['Review my progress', 'Help me plan a project'],
+        },
+      ]);
     }
   }, []);
 
   useEffect(() => {
-    if (messages.length > 3 && typeof window !== 'undefined') {
-      localStorage.setItem('overviewChatMessages', JSON.stringify(messages));
+    if (messages.length > 0 && typeof window !== 'undefined') {
+      const messagesToSave = messages.map(m => ({ ...m, isStreaming: false }));
+      localStorage.setItem('overviewChatMessages', JSON.stringify(messagesToSave));
     }
   }, [messages]);
 
-  const simulateStreamingResponse = async (response: string, messageId: string) => {
-    const words = response.split(' ');
-    let currentContent = '';
-    for (let i = 0; i < words.length; i++) {
-      currentContent += (i === 0 ? '' : ' ') + words[i];
-      setMessages(prev => prev.map(msg =>
-        msg.id === messageId ? { ...msg, content: currentContent, isStreaming: true } : msg
-      ));
-      await new Promise(resolve => setTimeout(resolve, 30 + Math.random() * 20));
-    }
-    setMessages(prev => prev.map(msg =>
-      msg.id === messageId ? { ...msg, isStreaming: false } : msg
-    ));
-  };
-
-  const handleSendMessage = async () => {
+  const handleSendMessage = useCallback(async () => {
     if (!inputValue.trim() || isTyping) return;
-    const userMessage: Message = {
-      id: Date.now().toString(),
+
+    const userMessage: ChatMessage = {
+      id: generateId(),
       role: 'user',
-      content: inputValue.trim()
+      content: inputValue.trim(),
+      timestamp: new Date().toISOString(),
     };
-    setMessages(prev => [...prev, userMessage]);
+
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
     setInputValue('');
     setIsTyping(true);
-    await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 500));
-    const assistantMessageId = (Date.now() + 1).toString();
-    const assistantMessage: Message = {
-      id: assistantMessageId,
-      role: 'assistant',
-      content: '',
-      isStreaming: true
-    };
-    setMessages(prev => [...prev, assistantMessage]);
-    setIsTyping(false);
-    await simulateStreamingResponse(
-      "That's a great question! Based on your project needs, I'd recommend starting with Seaborn for quick, beautiful visualizations. If you need interactivity later, Plotly integrates well. Would you like me to set up a starter template?",
-      assistantMessageId
-    );
-  };
+
+    const assistantMessageId = generateId();
+
+    try {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      abortControllerRef.current = new AbortController();
+
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: userMessage.content,
+          conversationHistory: updatedMessages.slice(-20),
+          userProfile: userProfile ? {
+            focus: userProfile.focus,
+            skill_level: userProfile.level,
+            weekly_hours: userProfile.time,
+            preferences: userProfile.preferences,
+            existing_tools: userProfile.existing_tools,
+            goal: userProfile.goal,
+          } : undefined,
+          context: 'This is the overview/reflection space. Help the user reflect on progress, plan projects, and explore tools in depth.',
+        }),
+        signal: abortControllerRef.current.signal,
+      });
+
+      if (!res.ok) throw new Error(`API returned ${res.status}`);
+
+      const contentType = res.headers.get('content-type') || '';
+
+      if (contentType.includes('text/event-stream')) {
+        const assistantMessage: ChatMessage = {
+          id: assistantMessageId,
+          role: 'assistant',
+          content: '',
+          isStreaming: true,
+        };
+        setMessages(prev => [...prev, assistantMessage]);
+        setIsTyping(false);
+
+        const reader = res.body?.getReader();
+        const decoder = new TextDecoder();
+
+        if (reader) {
+          let fullContent = '';
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split('\n');
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.slice(6);
+                if (data === '[DONE]') continue;
+                try {
+                  const parsed = JSON.parse(data);
+                  if (parsed.text) {
+                    fullContent += parsed.text;
+                    setMessages(prev =>
+                      prev.map(msg =>
+                        msg.id === assistantMessageId ? { ...msg, content: fullContent } : msg,
+                      ),
+                    );
+                  }
+                } catch { /* skip */ }
+              }
+            }
+          }
+          setMessages(prev =>
+            prev.map(msg =>
+              msg.id === assistantMessageId ? { ...msg, isStreaming: false } : msg,
+            ),
+          );
+        }
+      } else {
+        const data = await res.json();
+        const responseText = data.message || "I'm having trouble responding right now. Please try again.";
+
+        const assistantMessage: ChatMessage = {
+          id: assistantMessageId,
+          role: 'assistant',
+          content: '',
+          isStreaming: true,
+        };
+        setMessages(prev => [...prev, assistantMessage]);
+        setIsTyping(false);
+
+        const words = responseText.split(' ');
+        let currentContent = '';
+        for (let i = 0; i < words.length; i++) {
+          currentContent += (i === 0 ? '' : ' ') + words[i];
+          setMessages(prev =>
+            prev.map(msg =>
+              msg.id === assistantMessageId ? { ...msg, content: currentContent } : msg,
+            ),
+          );
+          await new Promise(resolve => setTimeout(resolve, 30 + Math.random() * 20));
+        }
+        setMessages(prev =>
+          prev.map(msg =>
+            msg.id === assistantMessageId ? { ...msg, isStreaming: false } : msg,
+          ),
+        );
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      setIsTyping(false);
+      setMessages(prev => [
+        ...prev,
+        {
+          id: assistantMessageId,
+          role: 'assistant',
+          content: "I'm having trouble connecting right now. Please try again in a moment.",
+        },
+      ]);
+    }
+  }, [inputValue, isTyping, messages, userProfile]);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
+  };
+
+  const handleSuggestionClick = (suggestion: string) => {
+    setInputValue(suggestion);
   };
 
   return (
@@ -135,7 +230,7 @@ export default function Overview() {
 
             {/* Messages Area */}
             <div className="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-hide">
-              <div className="text-center text-xs text-gray-400 my-4">Today, 9:41 AM</div>
+              <div className="text-center text-xs text-gray-400 my-4">Today</div>
 
               {messages.map((message) => (
                 <div key={message.id}>
@@ -156,6 +251,7 @@ export default function Overview() {
                             {message.suggestions.map((suggestion) => (
                               <button
                                 key={suggestion}
+                                onClick={() => handleSuggestionClick(suggestion)}
                                 className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium hover:bg-magnolia/50 transition-colors text-royal"
                               >
                                 {suggestion}
@@ -212,13 +308,10 @@ export default function Overview() {
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={handleKeyPress}
                   placeholder="Message Forge..."
-                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl pl-6 pr-32 py-4 text-royal focus:outline-none focus:border-phoenix focus:ring-1 focus:ring-phoenix transition-all placeholder-gray-400"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl pl-6 pr-16 py-4 text-royal focus:outline-none focus:border-phoenix focus:ring-1 focus:ring-phoenix transition-all placeholder-gray-400"
                   disabled={isTyping}
                 />
                 <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                  <button className="p-2 text-gray-400 hover:text-royal transition-colors">
-                    <Microphone size={20} />
-                  </button>
                   <button
                     onClick={handleSendMessage}
                     disabled={!inputValue.trim() || isTyping}
@@ -236,40 +329,75 @@ export default function Overview() {
 
           {/* Right Context Sidebar */}
           <div className="w-80 border-l border-gray-100 bg-light p-6 hidden xl:block overflow-y-auto">
-            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-6">Context & Memories</h4>
+            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-6">Context & Progress</h4>
 
             <div className="space-y-6">
+              {/* Tools Tried */}
               <div>
-                <h5 className="text-sm font-semibold text-royal mb-2">Current Project</h5>
+                <h5 className="text-sm font-semibold text-royal mb-2">Tools Explored</h5>
                 <div className="p-3 bg-white border border-gray-100 rounded-xl flex items-center gap-3">
-                  <div className="w-8 h-8 rounded bg-umber/10 text-umber flex items-center justify-center">
-                    <Code size={16} />
+                  <div className="w-8 h-8 rounded bg-chartreuse/20 text-chartreuse flex items-center justify-center">
+                    <Lightning size={16} weight="fill" />
                   </div>
                   <div className="text-xs">
-                    <div className="font-medium text-royal">Data Viz Dashboard</div>
-                    <div className="text-gray-400">Python, Streamlit</div>
+                    <div className="font-medium text-royal">{triedTools.length} tools tried</div>
+                    <div className="text-gray-400">this week</div>
                   </div>
                 </div>
               </div>
 
+              {/* Focus Area */}
+              {userProfile?.focus && (
+                <div>
+                  <h5 className="text-sm font-semibold text-royal mb-2">Focus Area</h5>
+                  <div className="p-3 bg-white border border-gray-100 rounded-xl flex items-center gap-3">
+                    <div className="w-8 h-8 rounded bg-umber/10 text-umber flex items-center justify-center">
+                      <Code size={16} />
+                    </div>
+                    <div className="text-xs">
+                      <div className="font-medium text-royal">{userProfile.focus}</div>
+                      <div className="text-gray-400">{userProfile.level || 'Not set'}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Weekly Goal */}
+              {userProfile?.goal && (
+                <div>
+                  <h5 className="text-sm font-semibold text-royal mb-2">Weekly Goal</h5>
+                  <div className="p-4 bg-magnolia/20 rounded-xl border border-magnolia text-xs leading-relaxed text-royal/80 italic flex items-start gap-2">
+                    <Target size={14} className="shrink-0 mt-0.5" />
+                    <span>&ldquo;{userProfile.goal}&rdquo;</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Quick Actions */}
               <div>
-                <h5 className="text-sm font-semibold text-royal mb-2">Related Tools</h5>
+                <h5 className="text-sm font-semibold text-royal mb-2">Quick Actions</h5>
                 <div className="space-y-2">
-                  <div className="p-2 hover:bg-white rounded-lg cursor-pointer transition-colors text-sm flex items-center gap-2 text-gray-600">
+                  <button
+                    onClick={() => setInputValue('Give me a daily check-in')}
+                    className="w-full p-2 hover:bg-white rounded-lg cursor-pointer transition-colors text-sm flex items-center gap-2 text-gray-600 text-left"
+                  >
                     <div className="w-1.5 h-1.5 rounded-full bg-chartreuse" />
-                    Streamlit
-                  </div>
-                  <div className="p-2 hover:bg-white rounded-lg cursor-pointer transition-colors text-sm flex items-center gap-2 text-gray-600">
+                    Daily Check-in
+                  </button>
+                  <button
+                    onClick={() => setInputValue('Help me reflect on my week')}
+                    className="w-full p-2 hover:bg-white rounded-lg cursor-pointer transition-colors text-sm flex items-center gap-2 text-gray-600 text-left"
+                  >
                     <div className="w-1.5 h-1.5 rounded-full bg-phoenix" />
-                    Pandas AI
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h5 className="text-sm font-semibold text-royal mb-2">Weekly Goal</h5>
-                <div className="p-4 bg-magnolia/20 rounded-xl border border-magnolia text-xs leading-relaxed text-royal/80 italic">
-                  &ldquo;I want to become proficient in building interactive dashboards by Friday.&rdquo;
+                    Weekly Reflection
+                  </button>
+                  <button
+                    onClick={() => setInputValue('Suggest a project idea for me')}
+                    className="w-full p-2 hover:bg-white rounded-lg cursor-pointer transition-colors text-sm flex items-center gap-2 text-gray-600 text-left"
+                  >
+                    <div className="w-1.5 h-1.5 rounded-full bg-lavender" />
+                    Project Ideas
+                  </button>
                 </div>
               </div>
             </div>
