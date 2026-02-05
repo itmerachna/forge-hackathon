@@ -54,7 +54,7 @@ export async function generateChatResponse(
     throw new Error('Gemini API key not configured');
   }
 
-  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash' });
 
   const systemPrompt = buildSystemPrompt(userProfile);
   const contextAddition = context ? `\n\nAdditional context: ${context}` : '';
@@ -89,7 +89,7 @@ export async function generateChatResponseStream(
     throw new Error('Gemini API key not configured');
   }
 
-  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash' });
 
   const systemPrompt = buildSystemPrompt(userProfile);
   const contextAddition = context ? `\n\nAdditional context: ${context}` : '';
