@@ -17,25 +17,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: fallbackResponse });
     }
 
-    // Stream response from Gemini
-    const stream = await generateChatResponseStream(
-      message,
-      conversationHistory || [],
-      userProfile,
-      context,
-    );
+    // Try streaming response from Gemini, fall back on failure
+    try {
+      const stream = await generateChatResponseStream(
+        message,
+        conversationHistory || [],
+        userProfile,
+        context,
+      );
 
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-      },
-    });
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      });
+    } catch (geminiError) {
+      console.error('Gemini API error, falling back:', geminiError);
+      const fallbackResponse = generateFallbackResponse(message);
+      return NextResponse.json({ message: fallbackResponse });
+    }
   } catch (error) {
     console.error('Chat API error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+    return NextResponse.json({ message: generateFallbackResponse('') });
   }
 }
 
