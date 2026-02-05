@@ -1,6 +1,11 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  Plant,
+  X,
+  ArrowRight,
+} from '@phosphor-icons/react';
 
 const QUESTIONS = [
   {
@@ -20,20 +25,20 @@ const QUESTIONS = [
   },
   {
     id: 'preferences',
-    question: "Any specific preferences? (You can adjust these later)",
-    type: 'text',
+    question: "Any specific preferences?",
+    type: 'text' as const,
     placeholder: 'e.g., I prefer free tools, love tools with great tutorials, avoid subscription-only services'
   },
   {
     id: 'existing_tools',
     question: "Share some tools you've enjoyed or been meaning to try",
-    type: 'text',
+    type: 'text' as const,
     placeholder: 'e.g., Figma, Framer, Midjourney, Runway'
   },
   {
     id: 'goal',
     question: 'What do you want to achieve in 4 weeks?',
-    type: 'text',
+    type: 'text' as const,
     placeholder: 'e.g., Learn 3D design for web projects'
   }
 ];
@@ -41,14 +46,18 @@ const QUESTIONS = [
 export default function Onboarding() {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const router = useRouter();
-  
+
   const currentQuestion = QUESTIONS[step];
-  
+  const totalSteps = QUESTIONS.length;
+  const progress = ((step + 1) / totalSteps) * 100;
+
   const handleAnswer = (answer: string) => {
     const newAnswers = { ...answers, [currentQuestion.id]: answer };
     setAnswers(newAnswers);
-    
+    setSelectedOption(null);
+
     if (step < QUESTIONS.length - 1) {
       setStep(step + 1);
     } else {
@@ -58,60 +67,110 @@ export default function Onboarding() {
       router.push('/dashboard');
     }
   };
-  
+
+  const handleContinue = () => {
+    if (currentQuestion.type === 'text') {
+      handleAnswer(answers[currentQuestion.id] || '');
+    } else if (selectedOption) {
+      handleAnswer(selectedOption);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center p-6">
-      <div className="max-w-2xl w-full">
-        <div className="mb-8">
-          <div className="flex gap-2 mb-4">
-            {QUESTIONS.map((_, i) => (
-              <div 
-                key={i}
-                className={`h-2 flex-1 rounded ${i <= step ? 'bg-orange-500' : 'bg-gray-700'}`}
-              />
-            ))}
+    <div className="w-full h-screen flex bg-light fade-in">
+      {/* Left Panel */}
+      <div className="w-1/3 bg-maiden hidden md:flex flex-col justify-between p-12 text-magnolia relative overflow-hidden">
+        <div className="relative z-10">
+          <div className="w-10 h-10 rounded-full bg-chartreuse flex items-center justify-center text-royal mb-8">
+            <Plant size={24} />
           </div>
-          <p className="text-sm text-gray-400">Question {step + 1} of {QUESTIONS.length}</p>
+          <h2 className="font-serif text-4xl leading-tight mb-6">
+            &ldquo;The best way to predict the future is to create it.&rdquo;
+          </h2>
+          <p className="text-white/50 font-mono text-sm">&mdash; Peter Drucker</p>
         </div>
-        
-        <h2 className="text-3xl font-bold mb-8">{currentQuestion.question}</h2>
-        
-        {currentQuestion.type === 'text' ? (
-          <div>
-            <textarea
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg p-4 text-white mb-4 min-h-32"
-              placeholder={currentQuestion.placeholder}
-              onChange={(e) => setAnswers({ ...answers, [currentQuestion.id]: e.target.value })}
+        <div className="absolute bottom-0 right-0 w-64 h-64 bg-chartreuse/20 rounded-full blur-[80px]" />
+        <div className="absolute top-1/2 left-[-50px] w-48 h-48 bg-phoenix/20 rounded-full blur-[60px]" />
+      </div>
+
+      {/* Right Panel */}
+      <div className="flex-1 flex flex-col justify-center items-center p-8 md:p-24 relative">
+        <div className="w-full max-w-lg">
+          <div className="flex justify-between items-center mb-8">
+            <span className="text-xs font-bold tracking-widest text-maiden/40 uppercase">
+              Step {String(step + 1).padStart(2, '0')} / {String(totalSteps).padStart(2, '0')}
+            </span>
+            <a href="/" className="text-royal/40 hover:text-royal transition-colors">
+              <X size={20} />
+            </a>
+          </div>
+
+          {/* Progress Bar */}
+          <div className="w-full h-1 bg-gray-100 rounded-full mb-12">
+            <div
+              className="h-full bg-phoenix rounded-full transition-all duration-500"
+              style={{ width: `${progress}%` }}
             />
+          </div>
+
+          <h3 className="text-3xl font-serif text-royal mb-8 slide-in" key={`q-${step}`}>
+            {currentQuestion.question}
+          </h3>
+
+          {currentQuestion.type === 'text' ? (
+            <div className="slide-in" key={`a-${step}`}>
+              <textarea
+                className="w-full bg-white border border-gray-200 rounded-xl p-4 text-royal mb-6 min-h-32 focus:outline-none focus:border-phoenix focus:ring-1 focus:ring-phoenix transition-all resize-none"
+                placeholder={currentQuestion.placeholder}
+                value={answers[currentQuestion.id] || ''}
+                onChange={(e) => setAnswers({ ...answers, [currentQuestion.id]: e.target.value })}
+              />
+            </div>
+          ) : (
+            <div className="space-y-4 mb-12 slide-in" key={`a-${step}`}>
+              {currentQuestion.options?.map((option) => (
+                <label
+                  key={option}
+                  className={`flex items-center p-4 border rounded-xl cursor-pointer transition-all group ${
+                    selectedOption === option
+                      ? 'border-phoenix bg-orange-50/50'
+                      : 'border-gray-200 hover:border-phoenix hover:bg-orange-50/30'
+                  }`}
+                  onClick={() => setSelectedOption(option)}
+                >
+                  <input
+                    type="radio"
+                    name="onboarding"
+                    checked={selectedOption === option}
+                    onChange={() => setSelectedOption(option)}
+                    className="w-5 h-5 text-phoenix border-gray-300 focus:ring-phoenix accent-phoenix"
+                  />
+                  <span className="ml-4 text-lg text-royal/80 group-hover:text-royal font-medium">{option}</span>
+                </label>
+              ))}
+            </div>
+          )}
+
+          <div className="flex justify-between items-center">
+            {step > 0 ? (
+              <button
+                onClick={() => { setStep(step - 1); setSelectedOption(null); }}
+                className="text-royal/40 hover:text-royal transition-colors text-sm font-medium"
+              >
+                &larr; Back
+              </button>
+            ) : (
+              <div />
+            )}
             <button
-              onClick={() => handleAnswer(answers[currentQuestion.id] as string || '')}
-              className="bg-orange-500 hover:bg-orange-600 px-6 py-3 rounded-lg font-semibold transition"
+              onClick={handleContinue}
+              className="px-8 py-3 bg-royal text-white font-medium rounded-full hover:bg-maiden transition-colors flex items-center gap-2"
             >
-              Continue
+              {step === QUESTIONS.length - 1 ? 'Finish Setup' : 'Continue'}
+              <ArrowRight size={16} />
             </button>
           </div>
-        ) : (
-          <div className="space-y-3">
-            {currentQuestion.options?.map((option) => (
-              <button
-                key={option}
-                onClick={() => handleAnswer(option)}
-                className="w-full text-left bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-orange-500 rounded-lg p-4 transition"
-              >
-                {option}
-              </button>
-            ))}
-          </div>
-        )}
-        
-        {step > 0 && (
-          <button
-            onClick={() => setStep(step - 1)}
-            className="mt-6 text-gray-400 hover:text-white transition"
-          >
-            ← Back
-          </button>
-        )}
+        </div>
       </div>
     </div>
   );
