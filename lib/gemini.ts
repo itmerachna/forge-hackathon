@@ -1,7 +1,14 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { ChatMessage, UserPreferences } from '../types';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+let _genAI: GoogleGenerativeAI | null = null;
+
+function getGenAI(): GoogleGenerativeAI {
+  if (!_genAI) {
+    _genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+  }
+  return _genAI;
+}
 
 export function isGeminiConfigured(): boolean {
   return Boolean(process.env.GEMINI_API_KEY);
@@ -47,7 +54,7 @@ export async function generateChatResponse(
     throw new Error('Gemini API key not configured');
   }
 
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
 
   const systemPrompt = buildSystemPrompt(userProfile);
   const contextAddition = context ? `\n\nAdditional context: ${context}` : '';
@@ -82,7 +89,7 @@ export async function generateChatResponseStream(
     throw new Error('Gemini API key not configured');
   }
 
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
 
   const systemPrompt = buildSystemPrompt(userProfile);
   const contextAddition = context ? `\n\nAdditional context: ${context}` : '';
