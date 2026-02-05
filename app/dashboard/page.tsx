@@ -1,5 +1,14 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import {
+  Sparkle,
+  CaretDown,
+  CaretUp,
+  Robot,
+  ArrowUpRight,
+  PaperPlaneRight,
+} from '@phosphor-icons/react';
+import Sidebar from '../components/Sidebar';
 
 const SAMPLE_TOOLS = [
   {
@@ -11,7 +20,7 @@ const SAMPLE_TOOLS = [
     website: "https://akool.com",
     twitter: "https://twitter.com/AKOOLGlobal",
     difficulty: "Beginner",
-    icon: "🎬"
+    color: "bg-phoenix"
   },
   {
     id: 2,
@@ -22,7 +31,7 @@ const SAMPLE_TOOLS = [
     website: "https://pixai.art/en",
     twitter: "https://twitter.com/PixAI_Official",
     difficulty: "Beginner",
-    icon: "🎨"
+    color: "bg-chartreuse"
   },
   {
     id: 3,
@@ -33,7 +42,7 @@ const SAMPLE_TOOLS = [
     website: "https://reccloud.com",
     twitter: "https://twitter.com/RecCloud_",
     difficulty: "Beginner",
-    icon: "🎙️"
+    color: "bg-cornflower"
   },
   {
     id: 4,
@@ -44,7 +53,7 @@ const SAMPLE_TOOLS = [
     website: "https://www.krea.ai",
     twitter: "https://twitter.com/kaborea",
     difficulty: "Intermediate",
-    icon: "✨"
+    color: "bg-lavender"
   },
   {
     id: 5,
@@ -55,7 +64,7 @@ const SAMPLE_TOOLS = [
     website: "https://gamma.app",
     twitter: "https://twitter.com/MeetGamma",
     difficulty: "Beginner",
-    icon: "📊"
+    color: "bg-magnolia"
   },
   {
     id: 6,
@@ -66,7 +75,7 @@ const SAMPLE_TOOLS = [
     website: "https://www.anything.com",
     twitter: "https://twitter.com/anything",
     difficulty: "Intermediate",
-    icon: "🚀"
+    color: "bg-phoenix"
   },
   {
     id: 7,
@@ -77,7 +86,7 @@ const SAMPLE_TOOLS = [
     website: "https://www.relume.io",
     twitter: "https://twitter.com/reaborea",
     difficulty: "Beginner",
-    icon: "🌐"
+    color: "bg-chartreuse"
   },
   {
     id: 8,
@@ -88,7 +97,7 @@ const SAMPLE_TOOLS = [
     website: "https://www.descript.com",
     twitter: "https://twitter.com/DescriptApp",
     difficulty: "Intermediate",
-    icon: "🎥"
+    color: "bg-cornflower"
   },
   {
     id: 9,
@@ -99,7 +108,7 @@ const SAMPLE_TOOLS = [
     website: "https://picwish.com",
     twitter: "https://twitter.com/PicWish",
     difficulty: "Beginner",
-    icon: "📷"
+    color: "bg-lavender"
   },
   {
     id: 10,
@@ -110,7 +119,7 @@ const SAMPLE_TOOLS = [
     website: "https://lumalabs.ai",
     twitter: "https://twitter.com/LumaLabsAI",
     difficulty: "Intermediate",
-    icon: "💫"
+    color: "bg-magnolia"
   }
 ];
 
@@ -125,18 +134,17 @@ export default function Dashboard() {
   const [userProfile, setUserProfile] = useState<Record<string, string> | null>(null);
   const [loading, setLoading] = useState(true);
   const [triedTools, setTriedTools] = useState<number[]>([]);
-  const [expandedTool, setExpandedTool] = useState<number | null>(null);
+  const [accordionOpen, setAccordionOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       role: 'assistant',
-      content: "Hey! I'm your AI tool coach. I can help you discover the perfect AI tools for your projects, explain how to use them, or suggest workflows. What would you like to explore today?"
+      content: "Good morning, Alex! Ready for your daily check-in? I noticed you've been exploring Python visualization libraries. How's that going?"
     }
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -152,17 +160,14 @@ export default function Dashboard() {
       if (profile) {
         setUserProfile(JSON.parse(profile));
       }
-
       const tried = localStorage.getItem('triedTools');
       if (tried) {
         setTriedTools(JSON.parse(tried));
       }
-
       const savedMessages = localStorage.getItem('chatMessages');
       if (savedMessages) {
         setMessages(JSON.parse(savedMessages));
       }
-
       setLoading(false);
     }
   }, []);
@@ -175,10 +180,8 @@ export default function Dashboard() {
 
   const handleMarkAsTried = (toolId: number) => {
     if (triedTools.includes(toolId)) return;
-
     const newTriedTools = [...triedTools, toolId];
     setTriedTools(newTriedTools);
-
     if (typeof window !== 'undefined') {
       localStorage.setItem('triedTools', JSON.stringify(newTriedTools));
     }
@@ -187,27 +190,20 @@ export default function Dashboard() {
   const simulateStreamingResponse = async (response: string, messageId: string) => {
     const words = response.split(' ');
     let currentContent = '';
-
     for (let i = 0; i < words.length; i++) {
       currentContent += (i === 0 ? '' : ' ') + words[i];
       setMessages(prev => prev.map(msg =>
-        msg.id === messageId
-          ? { ...msg, content: currentContent, isStreaming: true }
-          : msg
+        msg.id === messageId ? { ...msg, content: currentContent, isStreaming: true } : msg
       ));
       await new Promise(resolve => setTimeout(resolve, 30 + Math.random() * 20));
     }
-
     setMessages(prev => prev.map(msg =>
-      msg.id === messageId
-        ? { ...msg, isStreaming: false }
-        : msg
+      msg.id === messageId ? { ...msg, isStreaming: false } : msg
     ));
   };
 
   const generateResponse = (userMessage: string): string => {
     const lowerMsg = userMessage.toLowerCase();
-
     if (lowerMsg.includes('video') || lowerMsg.includes('edit')) {
       return "For video work, I'd recommend checking out AKOOL or Descript! AKOOL is great for beginners with its AI avatars and face swap features. Descript is more advanced but offers amazing transcription-based editing. Which one interests you more?";
     }
@@ -233,38 +229,30 @@ export default function Dashboard() {
       }
       return "To give you the best recommendation, tell me: What are you trying to create? A video, design, website, or something else?";
     }
-
     return "I'd love to help you find the right tool! Tell me more about your project - are you looking to create videos, designs, websites, or something else? I can match you with the perfect AI tool.";
   };
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isTyping) return;
-
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
       content: inputValue.trim()
     };
-
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsTyping(true);
-
     await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 500));
-
     const response = generateResponse(userMessage.content);
     const assistantMessageId = (Date.now() + 1).toString();
-
     const assistantMessage: Message = {
       id: assistantMessageId,
       role: 'assistant',
       content: '',
       isStreaming: true
     };
-
     setMessages(prev => [...prev, assistantMessage]);
     setIsTyping(false);
-
     await simulateStreamingResponse(response, assistantMessageId);
   };
 
@@ -277,248 +265,174 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
+      <div className="h-screen bg-royal text-white flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto mb-4"></div>
-          <p className="text-gray-400">Loading your dashboard...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-phoenix mx-auto mb-4" />
+          <p className="text-white/40">Loading your dashboard...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen bg-gray-900 text-white flex flex-col overflow-hidden">
-      {/* Navigation */}
-      <nav className="border-b border-gray-800 px-4 py-3 flex-shrink-0">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-red-500 rounded-lg flex items-center justify-center text-lg">
-              🔨
-            </div>
-            <h1 className="text-xl font-bold">Forge</h1>
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-400">
-              {triedTools.length}/2 tools tried
-            </span>
-            <a href="/" className="text-gray-400 hover:text-white transition text-sm">
-              Home
-            </a>
-          </div>
-        </div>
-      </nav>
+    <div className="flex w-full h-screen bg-royal fade-in">
+      <Sidebar />
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden max-w-6xl mx-auto w-full">
-        {/* Compact Tool List - Top 1/3 */}
-        <div className="h-[33vh] flex flex-col border-b border-gray-800 relative">
-          <div className="px-4 py-3 border-b border-gray-800 flex-shrink-0">
-            <h2 className="text-lg font-semibold">This Week's Tools</h2>
-            <p className="text-xs text-gray-400">Click to expand details</p>
+      <main className="flex-1 h-full overflow-hidden relative">
+        <div className="p-8 lg:p-12 max-w-5xl mx-auto h-full flex flex-col">
+          {/* Accordion Tool Suggestions */}
+          <div className="mb-8 flex-shrink-0">
+            <button
+              onClick={() => setAccordionOpen(!accordionOpen)}
+              className="w-full flex items-center justify-between p-6 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/[0.07] transition-colors group"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-full bg-chartreuse/20 flex items-center justify-center text-chartreuse">
+                  <Sparkle size={20} />
+                </div>
+                <div className="text-left">
+                  <h3 className="text-lg font-semibold text-white">Weekly Tool Suggestions</h3>
+                  <p className="text-sm text-white/50">{SAMPLE_TOOLS.length} AI tools curated for you this week</p>
+                </div>
+              </div>
+              {accordionOpen ? (
+                <CaretUp size={20} className="text-white/40 group-hover:text-white/60 transition-all" />
+              ) : (
+                <CaretDown size={20} className="text-white/40 group-hover:text-white/60 transition-all" />
+              )}
+            </button>
+
+            {accordionOpen && (
+              <div className="mt-4 space-y-3 max-h-[40vh] overflow-y-auto scrollbar-hide">
+                {SAMPLE_TOOLS.map(tool => (
+                  <div key={tool.id} className="group bg-white/5 border border-white/10 p-5 rounded-2xl hover:bg-white/[0.07] transition-all">
+                    <div className="flex items-start gap-4">
+                      <div className={`w-12 h-12 rounded-xl ${tool.color} flex items-center justify-center shrink-0`}>
+                        <Robot size={20} className="text-royal" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-start mb-2">
+                          <h4 className="font-semibold text-white">{tool.name}</h4>
+                          <span className="text-xs px-2 py-1 rounded-full bg-white/10 text-white/60 shrink-0 ml-2">{tool.category}</span>
+                        </div>
+                        <p className="text-sm text-white/60 leading-relaxed mb-3">{tool.description}</p>
+                        <div className="flex items-center gap-2">
+                          <a
+                            href={tool.website}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-4 py-1.5 rounded-lg bg-white/10 text-white text-sm font-medium hover:bg-white/20 transition-colors inline-flex items-center gap-2"
+                          >
+                            Explore <ArrowUpRight size={14} />
+                          </a>
+                          <button
+                            onClick={() => handleMarkAsTried(tool.id)}
+                            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                              triedTools.includes(tool.id)
+                                ? 'bg-chartreuse/20 text-chartreuse'
+                                : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white/60'
+                            }`}
+                          >
+                            {triedTools.includes(tool.id) ? 'Tried' : 'Mark Tried'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div className="flex-1 overflow-y-auto px-4 py-2">
-            {SAMPLE_TOOLS.map((tool, index) => {
-              const isExpanded = expandedTool === tool.id;
-              const isTried = triedTools.includes(tool.id);
+          {/* Chat Interface */}
+          <div className="flex-1 flex flex-col bg-white/5 border border-white/10 rounded-2xl overflow-hidden min-h-0">
+            {/* Chat Header */}
+            <div className="h-14 border-b border-white/10 flex items-center justify-between px-6 bg-white/5 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 rounded-full bg-chartreuse animate-pulse" />
+                <span className="font-medium text-white text-sm">Forge AI Coach</span>
+              </div>
+            </div>
 
-              return (
-                <div
-                  key={tool.id}
-                  className={`border-b border-gray-800 last:border-b-0 ${isExpanded ? 'bg-gray-800/50' : ''}`}
-                >
-                  {/* Collapsed Row */}
-                  <div
-                    onClick={() => setExpandedTool(isExpanded ? null : tool.id)}
-                    className="flex items-center gap-3 py-2.5 px-2 cursor-pointer hover:bg-gray-800/30 transition rounded"
-                  >
-                    {/* Serial Number */}
-                    <span className="text-gray-500 text-sm w-5 flex-shrink-0">{index + 1}</span>
+            {/* Messages Area */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide">
+              <div className="text-center text-xs text-white/30 my-4">Today</div>
 
-                    {/* Icon */}
-                    <span className="text-xl flex-shrink-0">{tool.icon}</span>
-
-                    {/* Name */}
-                    <span className="font-medium w-24 flex-shrink-0">{tool.name}</span>
-
-                    {/* Description */}
-                    <span className="text-gray-400 text-sm flex-1 truncate">{tool.description}</span>
-
-                    {/* Category Tag */}
-                    <span className="bg-gray-700 text-gray-300 text-xs px-2 py-0.5 rounded flex-shrink-0">
-                      {tool.category}
-                    </span>
-
-                    {/* Links */}
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <a
-                        href={tool.website}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-gray-400 hover:text-orange-400 transition"
-                        title="Website"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-                        </svg>
-                      </a>
-                      <a
-                        href={tool.twitter}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-gray-400 hover:text-blue-400 transition"
-                        title="Twitter"
-                      >
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                        </svg>
-                      </a>
+              {messages.map((message) => (
+                <div key={message.id}>
+                  {message.role === 'assistant' ? (
+                    <div className="flex gap-4 max-w-2xl">
+                      <div className="w-8 h-8 rounded-full bg-chartreuse/20 text-chartreuse flex items-center justify-center shrink-0 mt-1">
+                        <Sparkle size={16} weight="fill" />
+                      </div>
+                      <div className="bg-white/10 p-4 rounded-2xl rounded-tl-none text-white leading-relaxed">
+                        {message.content}
+                        {message.isStreaming && (
+                          <span className="inline-block w-1.5 h-4 bg-chartreuse ml-1 animate-pulse" />
+                        )}
+                      </div>
                     </div>
-
-                    {/* Tried Badge */}
-                    {isTried && (
-                      <span className="text-green-400 text-xs flex-shrink-0">✓</span>
-                    )}
-
-                    {/* Expand Arrow */}
-                    <svg
-                      className={`w-4 h-4 text-gray-500 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
-
-                  {/* Expanded Content */}
-                  {isExpanded && (
-                    <div className="px-12 pb-3 pt-1">
-                      <p className="text-gray-300 text-sm mb-3">{tool.description}</p>
-                      <div className="flex items-center gap-3">
-                        <span className="bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded">
-                          {tool.pricing}
-                        </span>
-                        <span className="bg-blue-500/20 text-blue-400 text-xs px-2 py-1 rounded">
-                          {tool.difficulty}
-                        </span>
-                        <a
-                          href={tool.website}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="bg-orange-500 hover:bg-orange-600 px-3 py-1 rounded text-xs font-semibold transition"
-                        >
-                          Visit Tool
-                        </a>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleMarkAsTried(tool.id);
-                          }}
-                          className={`px-3 py-1 rounded text-xs transition ${
-                            isTried
-                              ? 'bg-green-500/20 text-green-400 border border-green-500'
-                              : 'border border-gray-600 hover:border-gray-500'
-                          }`}
-                        >
-                          {isTried ? '✓ Tried' : 'Mark as Tried'}
-                        </button>
+                  ) : (
+                    <div className="flex gap-4 max-w-2xl ml-auto flex-row-reverse">
+                      <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 mt-1">
+                        <img
+                          src="https://ui-avatars.com/api/?name=Alex+Forge&background=ECA5CB&color=fff"
+                          className="w-full h-full object-cover"
+                          alt="You"
+                        />
+                      </div>
+                      <div className="bg-phoenix p-4 rounded-2xl rounded-tr-none text-white leading-relaxed">
+                        {message.content}
                       </div>
                     </div>
                   )}
                 </div>
-              );
-            })}
-          </div>
+              ))}
 
-          {/* Fade Gradient */}
-          <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-gray-900 to-transparent pointer-events-none"></div>
-        </div>
-
-        {/* Chat Interface - Bottom 2/3 */}
-        <div className="flex-1 flex flex-col min-h-0">
-          {/* Chat Header */}
-          <div className="px-4 py-3 border-b border-gray-800 flex-shrink-0">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-xs">
-                🤖
-              </div>
-              <h2 className="text-lg font-semibold">AI Tool Coach</h2>
-              <span className="text-xs text-gray-500">• Online</span>
-            </div>
-          </div>
-
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[80%] px-4 py-2.5 rounded-2xl ${
-                    message.role === 'user'
-                      ? 'bg-orange-500 text-white rounded-br-md'
-                      : 'bg-gray-800 text-gray-100 rounded-bl-md'
-                  }`}
-                >
-                  <p className="text-sm leading-relaxed">
-                    {message.content}
-                    {message.isStreaming && (
-                      <span className="inline-block w-1.5 h-4 bg-current ml-1 animate-pulse" />
-                    )}
-                  </p>
-                </div>
-              </div>
-            ))}
-
-            {/* Typing Indicator */}
-            {isTyping && (
-              <div className="flex justify-start">
-                <div className="bg-gray-800 px-4 py-3 rounded-2xl rounded-bl-md">
-                  <div className="flex items-center gap-1">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+              {/* Typing Indicator */}
+              {isTyping && (
+                <div className="flex gap-4 max-w-2xl">
+                  <div className="w-8 h-8 rounded-full bg-chartreuse/20 text-chartreuse flex items-center justify-center shrink-0 mt-1">
+                    <Sparkle size={16} weight="fill" />
+                  </div>
+                  <div className="bg-white/10 px-4 py-3 rounded-2xl rounded-tl-none">
+                    <div className="flex items-center gap-1">
+                      <div className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <div className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <div className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input Box - Fixed at Bottom */}
-          <div className="px-4 py-3 border-t border-gray-800 flex-shrink-0">
-            <div className="flex items-center gap-3">
-              <input
-                ref={inputRef}
-                type="text"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={handleKeyPress}
-                placeholder="Ask about any AI tool..."
-                className="flex-1 bg-gray-800 border border-gray-700 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 transition placeholder-gray-500"
-                disabled={isTyping}
-              />
-              <button
-                onClick={handleSendMessage}
-                disabled={!inputValue.trim() || isTyping}
-                className="bg-orange-500 hover:bg-orange-600 disabled:bg-gray-700 disabled:cursor-not-allowed p-2.5 rounded-full transition"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                </svg>
-              </button>
+              <div ref={messagesEndRef} />
             </div>
-            <p className="text-xs text-gray-500 mt-2 text-center">
-              Press Enter to send • AI responses are for guidance only
-            </p>
+
+            {/* Input Area */}
+            <div className="p-4 border-t border-white/10 shrink-0">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={handleKeyPress}
+                  placeholder="Message Forge..."
+                  className="w-full bg-white/5 border border-white/10 rounded-xl pl-6 pr-14 py-3.5 text-white placeholder-white/40 focus:outline-none focus:border-chartreuse/50 focus:ring-1 focus:ring-chartreuse/50 transition-all"
+                  disabled={isTyping}
+                />
+                <button
+                  onClick={handleSendMessage}
+                  disabled={!inputValue.trim() || isTyping}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-chartreuse text-royal rounded-lg hover:bg-chartreuse/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <PaperPlaneRight size={18} />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
