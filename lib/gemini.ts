@@ -14,6 +14,24 @@ export function isGeminiConfigured(): boolean {
   return Boolean(process.env.GEMINI_API_KEY);
 }
 
+// Gemini requires history to start with a user message and alternate
+function cleanHistory(conversationHistory: ChatMessage[]) {
+  const filtered = conversationHistory.filter((msg) => msg.content && !msg.isStreaming);
+
+  // Find first user message index
+  const firstUserIdx = filtered.findIndex((msg) => msg.role === 'user');
+  if (firstUserIdx === -1) return []; // No user messages, return empty
+
+  // Start from first user message
+  const trimmed = filtered.slice(firstUserIdx);
+
+  // Map to Gemini format
+  return trimmed.map((msg) => ({
+    role: msg.role === 'assistant' ? 'model' as const : 'user' as const,
+    parts: [{ text: msg.content }],
+  }));
+}
+
 function buildSystemPrompt(userProfile?: UserPreferences): string {
   const basePrompt = `You are Forge, a friendly and knowledgeable AI learning coach that helps creative professionals discover, learn, and master AI tools. Your personality is warm but focused — like a mentor who genuinely cares about the user's growth.
 
@@ -62,13 +80,7 @@ export async function generateChatResponse(
     systemInstruction: systemPrompt + contextAddition,
   });
 
-  const history = conversationHistory
-    .filter((msg) => msg.content && !msg.isStreaming)
-    .map((msg) => ({
-      role: msg.role === 'assistant' ? 'model' as const : 'user' as const,
-      parts: [{ text: msg.content }],
-    }));
-
+  const history = cleanHistory(conversationHistory);
   const chat = model.startChat({ history });
 
   const result = await chat.sendMessage(message);
@@ -94,13 +106,7 @@ export async function generateChatResponseStream(
     systemInstruction: systemPrompt + contextAddition,
   });
 
-  const history = conversationHistory
-    .filter((msg) => msg.content && !msg.isStreaming)
-    .map((msg) => ({
-      role: msg.role === 'assistant' ? 'model' as const : 'user' as const,
-      parts: [{ text: msg.content }],
-    }));
-
+  const history = cleanHistory(conversationHistory);
   const chat = model.startChat({ history });
 
   const result = await chat.sendMessageStream(message);
