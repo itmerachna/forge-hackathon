@@ -12,8 +12,10 @@ import ReactMarkdown from 'react-markdown';
 import Sidebar from '../components/Sidebar';
 import type { ChatMessage, Tool } from '../../types';
 import { getGreeting, generateId } from '../../lib/utils';
+import { useAuth } from '../../lib/auth';
 
 export default function Dashboard() {
+  const { user, profile } = useAuth();
   const [userProfile, setUserProfile] = useState<Record<string, string> | null>(null);
   const [loading, setLoading] = useState(true);
   const [triedTools, setTriedTools] = useState<number[]>([]);
@@ -37,8 +39,8 @@ export default function Dashboard() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const profile = localStorage.getItem('userProfile');
-    const parsedProfile = profile ? JSON.parse(profile) : null;
+    const localProfile = localStorage.getItem('userProfile');
+    const parsedProfile = localProfile ? JSON.parse(localProfile) : null;
     setUserProfile(parsedProfile);
 
     const tried = localStorage.getItem('triedTools');
@@ -60,29 +62,93 @@ export default function Dashboard() {
     setLoading(false);
   }, []);
 
-  // Fetch tools from API
+  // Fetch progress from Supabase when user is logged in
+  useEffect(() => {
+    if (!user?.id) return;
+
+    async function fetchProgress() {
+      try {
+        const res = await fetch(`/api/progress?user_id=${user?.id}`);
+        const data = await res.json();
+        if (data.progress?.length) {
+          const triedIds = data.progress
+            .filter((p: { status: string }) => ['tried', 'mastered'].includes(p.status))
+            .map((p: { tool_id: number }) => p.tool_id);
+          setTriedTools(triedIds);
+          localStorage.setItem('triedTools', JSON.stringify(triedIds));
+        }
+      } catch (error) {
+        console.error('Error fetching progress:', error);
+      }
+    }
+    fetchProgress();
+  }, [user?.id]);
+
+  // Fetch tools - use recommendations if user is logged in, otherwise all tools
   useEffect(() => {
     async function fetchTools() {
       try {
-        const res = await fetch('/api/tools');
-        const data = await res.json();
-        if (data.tools?.length) {
-          setTools(data.tools);
+        // First fetch all tools as fallback
+        const toolsRes = await fetch('/api/tools');
+        const toolsData = await toolsRes.json();
+        if (toolsData.tools?.length) {
+          setTools(toolsData.tools);
+        }
+
+        // If user is logged in, fetch personalized recommendations
+        if (user?.id) {
+          const recRes = await fetch(`/api/recommendations?user_id=${user.id}`);
+          const recData = await recRes.json();
+          if (recData.recommendations?.length) {
+            setTools(recData.recommendations);
+          }
         }
       } catch {
         // Tools API failed — will show empty state
       }
     }
     fetchTools();
-  }, []);
+  }, [user?.id]);
 
-  // Persist messages
+  // Fetch chat history from Supabase when user is logged in
+  useEffect(() => {
+    if (!user?.id) return;
+
+    async function fetchChatHistory() {
+      try {
+        const res = await fetch(`/api/chat-history?user_id=${user?.id}`);
+        const data = await res.json();
+        if (data.messages?.length) {
+          setMessages(data.messages);
+          localStorage.setItem('chatMessages', JSON.stringify(data.messages));
+        }
+      } catch (error) {
+        console.error('Error fetching chat history:', error);
+      }
+    }
+    fetchChatHistory();
+  }, [user?.id]);
+
+  // Persist messages to localStorage and Supabase
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     if (messages.length > 0 && typeof window !== 'undefined') {
       const messagesToSave = messages.map(m => ({ ...m, isStreaming: false }));
       localStorage.setItem('chatMessages', JSON.stringify(messagesToSave));
+
+      // Debounced save to Supabase (avoid saving on every keystroke during streaming)
+      if (user?.id && !messages.some(m => m.isStreaming)) {
+        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = setTimeout(() => {
+          fetch('/api/chat-history', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: user.id, messages: messagesToSave }),
+          }).catch(() => {});
+        }, 1000);
+      }
     }
-  }, [messages]);
+  }, [messages, user?.id]);
 
   const handleMarkAsTried = (toolId: number) => {
     if (triedTools.includes(toolId)) return;
@@ -92,15 +158,18 @@ export default function Dashboard() {
       localStorage.setItem('triedTools', JSON.stringify(newTriedTools));
     }
 
-    fetch('/api/progress', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_id: 'local-user',
-        tool_id: toolId,
-        status: 'tried',
-      }),
-    }).catch(() => {});
+    // Save to Supabase if user is logged in
+    if (user?.id) {
+      fetch('/api/progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          tool_id: toolId,
+          status: 'tried',
+        }),
+      }).catch(() => {});
+    }
   };
 
   const handleSendMessage = useCallback(async () => {
@@ -377,7 +446,7 @@ export default function Dashboard() {
                     <div className="flex gap-4 max-w-2xl ml-auto flex-row-reverse">
                       <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 mt-1">
                         <img
-                          src="https://ui-avatars.com/api/?name=Alex+Forge&background=ECA5CB&color=fff"
+                          src={profile?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.name || 'User')}&background=ECA5CB&color=fff`}
                           className="w-full h-full object-cover"
                           alt="You"
                         />
