@@ -1,18 +1,35 @@
 import {
   FireSimple,
   ArrowRight,
+  SignIn,
 } from '@phosphor-icons/react/dist/ssr';
+import Link from 'next/link';
 
 export default function Home() {
   return (
     <div className="w-full h-screen bg-royal text-magnolia flex flex-col relative overflow-hidden fade-in">
       {/* Nav */}
-      <nav className="w-full p-8 flex justify-center items-center z-10">
+      <nav className="w-full p-8 flex justify-between items-center z-10">
         <div className="text-2xl font-serif italic font-bold tracking-tight text-white flex items-center gap-2">
           <div className="w-8 h-8 rounded-full bg-phoenix flex items-center justify-center text-royal">
             <FireSimple size={20} weight="fill" />
           </div>
           Forge.
+        </div>
+        <div className="flex items-center gap-4">
+          <Link
+            href="/auth/login"
+            className="text-magnolia/70 hover:text-white transition-colors flex items-center gap-2"
+          >
+            <SignIn size={20} />
+            Sign In
+          </Link>
+          <Link
+            href="/auth/signup"
+            className="px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-full text-white transition-colors"
+          >
+            Sign Up
+          </Link>
         </div>
       </nav>
 
@@ -29,13 +46,13 @@ export default function Home() {
         <p className="max-w-xl text-lg md:text-xl text-magnolia/60 font-light mb-12 leading-relaxed">
           Your personal AI agent for curated AI tool discovery, daily accountability, and deep reflection on your digital craft. Let Forge help you actually master the tools you bookmark.
         </p>
-        <a
-          href="/onboarding"
+        <Link
+          href="/auth/signup"
           className="px-8 py-4 bg-phoenix text-white font-medium text-lg rounded-full hover:bg-orange-600 transition-colors shadow-glow flex items-center gap-2 group"
         >
-          Begin Onboarding
+          Get Started Free
           <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
-        </a>
+        </Link>
       </div>
 
       {/* Abstract Visuals */}
