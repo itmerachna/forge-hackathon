@@ -360,11 +360,12 @@ export default function Tracker() {
                   <input type="url" value={proofUrl} onChange={(e) => setProofUrl(e.target.value)} placeholder="https://..."
                     className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30 focus:outline-none focus:border-phoenix/50" />
                 </div>
-                <div className="flex gap-2 text-xs text-white/40 mb-4">
+                <div className="flex gap-2 text-xs text-white/40 mb-3">
                   <span className="flex items-center gap-1"><Camera size={12} /> Screenshot</span>
                   <span className="flex items-center gap-1"><Link size={12} /> Link</span>
                   <span className="flex items-center gap-1"><Upload size={12} /> Video</span>
                 </div>
+                <p className="text-xs text-phoenix/70 bg-phoenix/10 border border-phoenix/20 rounded-lg px-3 py-2 mb-4">Proof links and uploads are publicly accessible. Avoid sharing personal information if you prefer to stay anonymous.</p>
                 <div className="flex gap-2">
                   <button onClick={() => handleProofSubmit(proofModal)} disabled={!proofUrl} className="px-4 py-2 bg-chartreuse text-royal font-medium rounded-lg text-sm hover:bg-chartreuse/90 disabled:opacity-40">Submit Proof</button>
                   <button onClick={() => setProofModal(null)} className="px-4 py-2 bg-white/5 text-white/60 rounded-lg text-sm hover:bg-white/10">Cancel</button>
