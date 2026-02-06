@@ -1,6 +1,6 @@
 # Forge Project - Agent Tasks Reference
 
-This file documents repetitive tasks and workflows identified during development that could be automated or delegated to specialized agents.
+This file documents repetitive tasks and workflows for development automation.
 
 ---
 
@@ -8,12 +8,7 @@ This file documents repetitive tasks and workflows identified during development
 
 ### Push to Branch
 ```bash
-git add -A && git commit -m "$(cat <<'EOF'
-<commit message>
-
-https://claude.ai/code/session_ID
-EOF
-)" && git push -u origin claude/<branch-name>
+git add -A && git commit -m "<commit message>" && git push -u origin <branch-name>
 ```
 
 ### Check Status
@@ -57,28 +52,11 @@ ADD COLUMN IF NOT EXISTS <column> <TYPE> <DEFAULT>;
 ALTER TABLE <table_name> DISABLE ROW LEVEL SECURITY;
 ```
 
-### Create New Table Template
-```sql
-CREATE TABLE IF NOT EXISTS <table_name> (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-  -- columns here
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
-);
-
-ALTER TABLE <table_name> DISABLE ROW LEVEL SECURITY;
-```
-
-### Add Unique Constraint
-```sql
-ALTER TABLE <table_name>
-ADD CONSTRAINT <constraint_name> UNIQUE (<col1>, <col2>);
-```
-
 ---
 
 ## API Testing Agent
+
+**Important:** Keep trying potential solutions until successful deployment with 0 build errors. If unable to resolve after multiple attempts, inform the user.
 
 ### Test GET Endpoint (Browser)
 ```
@@ -112,6 +90,8 @@ fetch('/api/discover-tools', {
 
 ## Vercel Deployment Agent
 
+**Important:** Keep trying potential solutions until successful deployment with 0 build errors. If unable to resolve after multiple attempts, inform the user.
+
 ### Check Deployment Status
 1. Go to Vercel Dashboard → Project
 2. Check Deployments tab
@@ -122,15 +102,6 @@ fetch('/api/discover-tools', {
 2. Add/update variable
 3. **Redeploy required** for changes to take effect
 
-### Common Env Vars
-```
-GEMINI_API_KEY=
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-PRODUCTHUNT_TOKEN=
-GITHUB_TOKEN=
-```
-
 ---
 
 ## Package Installation Agent
@@ -139,13 +110,6 @@ GITHUB_TOKEN=
 ```bash
 npm install <package-name>
 ```
-
-### Common packages used
-- `react-markdown` - Markdown rendering
-- `@tailwindcss/typography` - Prose styling
-- `@supabase/supabase-js` - Supabase client
-- `@google/generative-ai` - Gemini SDK
-- `@phosphor-icons/react` - Icons
 
 ---
 
@@ -179,16 +143,11 @@ export default function PageName() {
 }
 ```
 
-### Update Imports (common pattern)
-```typescript
-// Add to existing imports
-import { useAuth } from '../../lib/auth';
-import ReactMarkdown from 'react-markdown';
-```
-
 ---
 
 ## Debug Agent
+
+**Important:** Keep trying potential solutions until successful deployment with 0 build errors. If unable to resolve after multiple attempts, inform the user.
 
 ### Check Gemini Errors
 Look for `_debug` field in API response:
@@ -257,54 +216,32 @@ useEffect(() => {
 
 ---
 
-## Todo Management
+## README.md Guidelines
 
-### Update Progress
-Always update TodoWrite when:
-- Starting a task → `in_progress`
-- Completing a task → `completed`
-- Finding new tasks → add as `pending`
-
-### Task Format
-```json
-{
-  "content": "Task description",
-  "activeForm": "Present participle form (e.g., 'Fixing bug')",
-  "status": "pending | in_progress | completed"
-}
-```
+- Keep it concise
+- One paragraph max describing what the project is
+- Short bullet list of key features
+- No lengthy essays or architecture diagrams
+- No tech stack sections
+- Follow portfolio-website markdown structure
 
 ---
 
 ## Workflow: New Feature
 
-1. **Plan** - Update TodoWrite with tasks
+1. **Plan** - Break down into tasks
 2. **Implement** - Write code
 3. **Type Check** - `npx tsc --noEmit`
-4. **Commit** - Git add, commit with session link
+4. **Commit** - Git add and commit
 5. **Push** - Push to branch
 6. **SQL** - Provide any needed schema changes
 7. **Test** - User merges, deploys, tests
-8. **Debug** - Check Vercel logs if issues
+8. **Debug** - Check Vercel logs if issues, keep trying until 0 build errors
 9. **Iterate** - Fix and repeat
 
 ---
 
 ## Quick Reference
-
-### Branch Naming
-```
-claude/<feature-name>-<random-id>
-```
-
-### Commit Message Format
-```
-<Short description>
-
-<Detailed bullet points>
-
-https://claude.ai/code/session_<ID>
-```
 
 ### File Locations
 - Pages: `app/<name>/page.tsx`
