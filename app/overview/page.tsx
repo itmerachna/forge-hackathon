@@ -8,6 +8,7 @@ import {
   Target,
   Lightning,
 } from '@phosphor-icons/react';
+import ReactMarkdown from 'react-markdown';
 import Sidebar from '../components/Sidebar';
 import type { ChatMessage } from '../../types';
 import { getGreeting, generateId } from '../../lib/utils';
@@ -240,8 +241,8 @@ export default function Overview() {
                         <Sparkle size={16} weight="fill" />
                       </div>
                       <div className="space-y-2">
-                        <div className="bg-gray-100 p-4 rounded-2xl rounded-tl-none text-royal leading-relaxed whitespace-pre-line">
-                          {message.content}
+                        <div className="bg-gray-100 p-4 rounded-2xl rounded-tl-none text-royal leading-relaxed prose prose-sm max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-strong:text-royal prose-a:text-phoenix">
+                          <ReactMarkdown>{message.content}</ReactMarkdown>
                           {message.isStreaming && (
                             <span className="inline-block w-1.5 h-4 bg-royal ml-1 animate-pulse" />
                           )}

@@ -7,17 +7,20 @@ import {
   SquaresFour,
   ChartBar,
   GearSix,
+  SignOut,
 } from '@phosphor-icons/react';
+import { useAuth } from '../../lib/auth';
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { profile, signOut } = useAuth();
   const [userProfile, setUserProfile] = useState<Record<string, string> | null>(null);
   const [triedTools, setTriedTools] = useState<number[]>([]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const profile = localStorage.getItem('userProfile');
-    if (profile) setUserProfile(JSON.parse(profile));
+    const localProfile = localStorage.getItem('userProfile');
+    if (localProfile) setUserProfile(JSON.parse(localProfile));
     const tried = localStorage.getItem('triedTools');
     if (tried) setTriedTools(JSON.parse(tried));
   }, []);
@@ -91,24 +94,41 @@ export default function Sidebar() {
         </div>
 
         {/* Profile */}
-        <a
-          href="/settings"
-          className="flex items-center gap-3 px-2 w-full hover:bg-white/5 rounded-xl p-2 transition-colors cursor-pointer"
-        >
-          <img
-            src="https://ui-avatars.com/api/?name=Alex+Forge&background=ECA5CB&color=fff"
-            className="w-8 h-8 rounded-full border border-white/20"
-            alt="Profile"
-          />
-          <div className="hidden lg:flex flex-col items-start">
-            <span className="text-sm font-medium text-white">
-              {userProfile?.focus ? `${userProfile.focus} Creator` : 'Forge User'}
-            </span>
-            <span className="text-[10px] text-white/50">
-              {userProfile?.level || 'Getting started'}
-            </span>
-          </div>
-        </a>
+        <div className="space-y-2">
+          <a
+            href="/settings"
+            className="flex items-center gap-3 px-2 w-full hover:bg-white/5 rounded-xl p-2 transition-colors cursor-pointer"
+          >
+            {profile?.avatar_url ? (
+              <img
+                src={profile.avatar_url}
+                className="w-8 h-8 rounded-full border border-white/20 object-cover"
+                alt="Profile"
+              />
+            ) : (
+              <img
+                src={`https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.name || 'User')}&background=ECA5CB&color=fff`}
+                className="w-8 h-8 rounded-full border border-white/20"
+                alt="Profile"
+              />
+            )}
+            <div className="hidden lg:flex flex-col items-start">
+              <span className="text-sm font-medium text-white">
+                {profile?.name || 'Forge User'}
+              </span>
+              <span className="text-[10px] text-white/50">
+                @{profile?.username || 'user'}
+              </span>
+            </div>
+          </a>
+          <button
+            onClick={() => signOut()}
+            className="w-full flex items-center gap-3 px-3 py-2 text-white/40 hover:text-white/60 hover:bg-white/5 rounded-xl transition-colors"
+          >
+            <SignOut size={18} />
+            <span className="text-xs hidden lg:block">Sign Out</span>
+          </button>
+        </div>
       </div>
     </aside>
   );
