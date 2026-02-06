@@ -8,6 +8,7 @@ import {
   ArrowUpRight,
   PaperPlaneRight,
 } from '@phosphor-icons/react';
+import ReactMarkdown from 'react-markdown';
 import Sidebar from '../components/Sidebar';
 import type { ChatMessage, Tool } from '../../types';
 import { getGreeting, generateId } from '../../lib/utils';
@@ -365,8 +366,8 @@ export default function Dashboard() {
                       <div className="w-8 h-8 rounded-full bg-chartreuse/20 text-chartreuse flex items-center justify-center shrink-0 mt-1">
                         <Sparkle size={16} weight="fill" />
                       </div>
-                      <div className="bg-white/10 p-4 rounded-2xl rounded-tl-none text-white leading-relaxed whitespace-pre-line">
-                        {message.content}
+                      <div className="bg-white/10 p-4 rounded-2xl rounded-tl-none text-white leading-relaxed prose prose-invert prose-sm max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-strong:text-white prose-a:text-phoenix">
+                        <ReactMarkdown>{message.content}</ReactMarkdown>
                         {message.isStreaming && (
                           <span className="inline-block w-1.5 h-4 bg-chartreuse ml-1 animate-pulse" />
                         )}
