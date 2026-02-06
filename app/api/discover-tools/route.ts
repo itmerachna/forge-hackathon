@@ -287,17 +287,15 @@ async function saveToSupabase(tools: CategorizedTool[]): Promise<{ saved: number
       continue;
     }
 
-    // Insert new tool
+    // Insert new tool (only columns that exist in schema)
     const { error } = await supabase.from('tools').insert({
       name: tool.name,
-      description: tool.description,
+      description: tool.description || '',
       category: tool.category,
       pricing: tool.pricing,
       website: tool.website,
       difficulty: tool.difficulty,
       color: getRandomColor(),
-      source: tool.source,
-      votes: tool.votes,
     });
 
     if (error) {
