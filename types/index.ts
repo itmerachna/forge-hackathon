@@ -4,7 +4,10 @@ export interface User {
   id: string;
   email: string;
   name: string;
+  username?: string;
+  bio?: string;
   avatar_url?: string;
+  onboarding_completed?: boolean;
   created_at: string;
   updated_at: string;
 }

@@ -1,11 +1,13 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Plant,
   X,
   ArrowRight,
+  SpinnerGap,
 } from '@phosphor-icons/react';
+import { useAuth } from '../../lib/auth';
 
 const QUESTIONS = [
   {
@@ -47,11 +49,55 @@ export default function Onboarding() {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const router = useRouter();
+  const { user, profile, updateProfile, loading: authLoading } = useAuth();
+
+  // Redirect if not logged in or profile not set up
+  useEffect(() => {
+    if (!authLoading) {
+      if (!user) {
+        router.push('/auth/signup');
+      } else if (!profile?.name) {
+        router.push('/auth/profile-setup');
+      } else if (profile?.onboarding_completed) {
+        router.push('/dashboard');
+      }
+    }
+  }, [user, profile, authLoading, router]);
 
   const currentQuestion = QUESTIONS[step];
   const totalSteps = QUESTIONS.length;
   const progress = ((step + 1) / totalSteps) * 100;
+
+  const saveOnboarding = async (finalAnswers: Record<string, string>) => {
+    setSaving(true);
+
+    // Save to localStorage for fallback/immediate use
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('userProfile', JSON.stringify(finalAnswers));
+    }
+
+    // Save to Supabase via API
+    try {
+      await fetch('/api/progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user?.id,
+          preferences: finalAnswers,
+        }),
+      });
+
+      // Mark onboarding as complete
+      await updateProfile({ onboarding_completed: true });
+    } catch (error) {
+      console.error('Error saving onboarding:', error);
+    }
+
+    setSaving(false);
+    router.push('/dashboard');
+  };
 
   const handleAnswer = (answer: string) => {
     const newAnswers = { ...answers, [currentQuestion.id]: answer };
@@ -61,12 +107,17 @@ export default function Onboarding() {
     if (step < QUESTIONS.length - 1) {
       setStep(step + 1);
     } else {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('userProfile', JSON.stringify(newAnswers));
-      }
-      router.push('/dashboard');
+      saveOnboarding(newAnswers);
     }
   };
+
+  if (authLoading || saving) {
+    return (
+      <div className="w-full h-screen flex items-center justify-center bg-light">
+        <SpinnerGap className="animate-spin text-phoenix" size={40} />
+      </div>
+    );
+  }
 
   const handleContinue = () => {
     if (currentQuestion.type === 'text') {
