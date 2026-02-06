@@ -84,14 +84,20 @@ export async function generateChatResponse(
 
   const systemPrompt = buildSystemPrompt(userProfile);
   const contextAddition = context ? `\n\nAdditional context: ${context}` : '';
+  const fullSystemPrompt = systemPrompt + contextAddition;
 
-  const model = getGenAI().getGenerativeModel({
-    model: 'gemini-1.5-flash',
-    systemInstruction: systemPrompt + contextAddition,
-  });
+  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash' });
 
   const history = cleanHistory(conversationHistory, message);
-  const chat = model.startChat({ history });
+
+  // Prepend system prompt as first exchange (since systemInstruction may not be supported)
+  const historyWithSystem = [
+    { role: 'user' as const, parts: [{ text: `System: ${fullSystemPrompt}` }] },
+    { role: 'model' as const, parts: [{ text: 'Understood! I am Forge, your AI learning coach. I will help you discover and master AI tools. How can I help you today?' }] },
+    ...history,
+  ];
+
+  const chat = model.startChat({ history: historyWithSystem });
 
   const result = await chat.sendMessage(message);
   const response = result.response;
@@ -110,14 +116,20 @@ export async function generateChatResponseStream(
 
   const systemPrompt = buildSystemPrompt(userProfile);
   const contextAddition = context ? `\n\nAdditional context: ${context}` : '';
+  const fullSystemPrompt = systemPrompt + contextAddition;
 
-  const model = getGenAI().getGenerativeModel({
-    model: 'gemini-1.5-flash',
-    systemInstruction: systemPrompt + contextAddition,
-  });
+  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash' });
 
   const history = cleanHistory(conversationHistory, message);
-  const chat = model.startChat({ history });
+
+  // Prepend system prompt as first exchange (since systemInstruction may not be supported)
+  const historyWithSystem = [
+    { role: 'user' as const, parts: [{ text: `System: ${fullSystemPrompt}` }] },
+    { role: 'model' as const, parts: [{ text: 'Understood! I am Forge, your AI learning coach. I will help you discover and master AI tools. How can I help you today?' }] },
+    ...history,
+  ];
+
+  const chat = model.startChat({ history: historyWithSystem });
 
   const result = await chat.sendMessageStream(message);
 
