@@ -14,13 +14,23 @@ export function isGeminiConfigured(): boolean {
   return Boolean(process.env.GEMINI_API_KEY);
 }
 
-// Gemini requires history to start with a user message and alternate
-function cleanHistory(conversationHistory: ChatMessage[]) {
+// Gemini requires history to start with a user message and alternate user/model
+// Also, the conversationHistory includes the current message we're about to send,
+// so we need to exclude it from history
+function cleanHistory(conversationHistory: ChatMessage[], currentMessage: string) {
   const filtered = conversationHistory.filter((msg) => msg.content && !msg.isStreaming);
 
-  // Find first user message index
+  // Remove the last message if it matches what we're about to send (it's the current message)
+  if (filtered.length > 0) {
+    const lastMsg = filtered[filtered.length - 1];
+    if (lastMsg.role === 'user' && lastMsg.content.trim() === currentMessage.trim()) {
+      filtered.pop();
+    }
+  }
+
+  // Find first user message index (skip leading assistant messages)
   const firstUserIdx = filtered.findIndex((msg) => msg.role === 'user');
-  if (firstUserIdx === -1) return []; // No user messages, return empty
+  if (firstUserIdx === -1) return []; // No user messages, return empty history
 
   // Start from first user message
   const trimmed = filtered.slice(firstUserIdx);
@@ -80,7 +90,7 @@ export async function generateChatResponse(
     systemInstruction: systemPrompt + contextAddition,
   });
 
-  const history = cleanHistory(conversationHistory);
+  const history = cleanHistory(conversationHistory, message);
   const chat = model.startChat({ history });
 
   const result = await chat.sendMessage(message);
@@ -106,7 +116,7 @@ export async function generateChatResponseStream(
     systemInstruction: systemPrompt + contextAddition,
   });
 
-  const history = cleanHistory(conversationHistory);
+  const history = cleanHistory(conversationHistory, message);
   const chat = model.startChat({ history });
 
   const result = await chat.sendMessageStream(message);
