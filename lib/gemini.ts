@@ -86,7 +86,7 @@ export async function generateChatResponse(
   const contextAddition = context ? `\n\nAdditional context: ${context}` : '';
   const fullSystemPrompt = systemPrompt + contextAddition;
 
-  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash' });
 
   const history = cleanHistory(conversationHistory, message);
 
@@ -118,7 +118,7 @@ export async function generateChatResponseStream(
   const contextAddition = context ? `\n\nAdditional context: ${context}` : '';
   const fullSystemPrompt = systemPrompt + contextAddition;
 
-  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash' });
 
   const history = cleanHistory(conversationHistory, message);
 
