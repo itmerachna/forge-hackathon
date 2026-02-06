@@ -87,42 +87,65 @@ async function fetchProductHuntTools(): Promise<DiscoveredTool[]> {
   }
 }
 
-// GitHub Trending AI repositories
+// GitHub Trending AI repositories - multiple queries for better coverage
 async function fetchGitHubTrending(): Promise<DiscoveredTool[]> {
-  try {
-    // Using unofficial GitHub trending API or scraping
-    const response = await fetch(
-      'https://api.github.com/search/repositories?q=topic:ai+topic:tool+created:>' +
-      getLastMonthDate() +
-      '&sort=stars&order=desc&per_page=15',
-      {
-        headers: {
-          'Accept': 'application/vnd.github.v3+json',
-          ...(process.env.GITHUB_TOKEN ? { 'Authorization': `token ${process.env.GITHUB_TOKEN}` } : {}),
-        },
-      }
-    );
+  const queries = [
+    'topic:ai topic:tool',
+    'topic:artificial-intelligence topic:design',
+    'topic:generative-ai topic:creative',
+  ];
 
-    if (!response.ok) {
-      console.error('GitHub API error:', response.status);
-      return [];
-    }
-
-    const data = await response.json();
-    const repos = data?.items || [];
-
-    return repos.map((repo: GitHubRepo) => ({
-      name: repo.name,
-      description: repo.description || '',
-      website: repo.homepage || repo.html_url,
-      source: 'github' as const,
-      votes: repo.stargazers_count,
-      topics: repo.topics || [],
-    }));
-  } catch (error) {
-    console.error('GitHub fetch error:', error);
-    return [];
+  const allRepos: DiscoveredTool[] = [];
+  const headers: Record<string, string> = {
+    'Accept': 'application/vnd.github.v3+json',
+  };
+  if (process.env.GITHUB_TOKEN) {
+    headers['Authorization'] = `token ${process.env.GITHUB_TOKEN}`;
   }
+
+  for (const query of queries) {
+    try {
+      const encodedQuery = encodeURIComponent(`${query} created:>${getLastMonthDate()}`);
+      const response = await fetch(
+        `https://api.github.com/search/repositories?q=${encodedQuery}&sort=stars&order=desc&per_page=10`,
+        { headers }
+      );
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          console.warn('GitHub API rate limited. Set GITHUB_TOKEN for higher limits.');
+          break;
+        }
+        console.error('GitHub API error:', response.status);
+        continue;
+      }
+
+      const data = await response.json();
+      const repos = data?.items || [];
+
+      for (const repo of repos) {
+        const exists = allRepos.some(r => r.name.toLowerCase() === repo.name.toLowerCase());
+        if (!exists) {
+          allRepos.push({
+            name: repo.name,
+            description: repo.description || '',
+            website: repo.homepage || repo.html_url,
+            source: 'github' as const,
+            votes: repo.stargazers_count,
+            topics: repo.topics || [],
+          });
+        }
+      }
+
+      // Small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 300));
+    } catch (error) {
+      console.error('GitHub fetch error:', error);
+      continue;
+    }
+  }
+
+  return allRepos.slice(0, 15);
 }
 
 // Hacker News AI tools (via Algolia API)

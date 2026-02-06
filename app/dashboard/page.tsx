@@ -3,10 +3,11 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Sparkle,
   CaretDown,
-  CaretUp,
   Robot,
   ArrowUpRight,
   PaperPlaneRight,
+  Globe,
+  XLogo,
 } from '@phosphor-icons/react';
 import ReactMarkdown from 'react-markdown';
 import Sidebar from '../components/Sidebar';
@@ -20,7 +21,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [triedTools, setTriedTools] = useState<number[]>([]);
   const [tools, setTools] = useState<Tool[]>([]);
-  const [accordionOpen, setAccordionOpen] = useState(false);
+  const [expandedTool, setExpandedTool] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -62,10 +63,9 @@ export default function Dashboard() {
     setLoading(false);
   }, []);
 
-  // Fetch progress from Supabase when user is logged in
+  // Fetch progress from Supabase
   useEffect(() => {
     if (!user?.id) return;
-
     async function fetchProgress() {
       try {
         const res = await fetch(`/api/progress?user_id=${user?.id}`);
@@ -84,36 +84,33 @@ export default function Dashboard() {
     fetchProgress();
   }, [user?.id]);
 
-  // Fetch tools - use recommendations if user is logged in, otherwise all tools
+  // Fetch tools (10 per week max)
   useEffect(() => {
     async function fetchTools() {
       try {
-        // First fetch all tools as fallback
         const toolsRes = await fetch('/api/tools');
         const toolsData = await toolsRes.json();
         if (toolsData.tools?.length) {
-          setTools(toolsData.tools);
+          setTools(toolsData.tools.slice(0, 10));
         }
 
-        // If user is logged in, fetch personalized recommendations
         if (user?.id) {
           const recRes = await fetch(`/api/recommendations?user_id=${user.id}`);
           const recData = await recRes.json();
           if (recData.recommendations?.length) {
-            setTools(recData.recommendations);
+            setTools(recData.recommendations.slice(0, 10));
           }
         }
       } catch {
-        // Tools API failed — will show empty state
+        // Tools API failed
       }
     }
     fetchTools();
   }, [user?.id]);
 
-  // Fetch chat history from Supabase when user is logged in
+  // Fetch chat history from Supabase
   useEffect(() => {
     if (!user?.id) return;
-
     async function fetchChatHistory() {
       try {
         const res = await fetch(`/api/chat-history?user_id=${user?.id}`);
@@ -129,14 +126,13 @@ export default function Dashboard() {
     fetchChatHistory();
   }, [user?.id]);
 
-  // Persist messages to localStorage and Supabase
+  // Persist messages
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     if (messages.length > 0 && typeof window !== 'undefined') {
       const messagesToSave = messages.map(m => ({ ...m, isStreaming: false }));
       localStorage.setItem('chatMessages', JSON.stringify(messagesToSave));
 
-      // Debounced save to Supabase (avoid saving on every keystroke during streaming)
       if (user?.id && !messages.some(m => m.isStreaming)) {
         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
         saveTimeoutRef.current = setTimeout(() => {
@@ -157,17 +153,11 @@ export default function Dashboard() {
     if (typeof window !== 'undefined') {
       localStorage.setItem('triedTools', JSON.stringify(newTriedTools));
     }
-
-    // Save to Supabase if user is logged in
     if (user?.id) {
       fetch('/api/progress', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: user.id,
-          tool_id: toolId,
-          status: 'tried',
-        }),
+        body: JSON.stringify({ user_id: user.id, tool_id: toolId, status: 'tried' }),
       }).catch(() => {});
     }
   };
@@ -190,9 +180,7 @@ export default function Dashboard() {
     const assistantMessageId = generateId();
 
     try {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
+      if (abortControllerRef.current) abortControllerRef.current.abort();
       abortControllerRef.current = new AbortController();
 
       const res = await fetch('/api/chat', {
@@ -213,20 +201,12 @@ export default function Dashboard() {
         signal: abortControllerRef.current.signal,
       });
 
-      if (!res.ok) {
-        throw new Error(`API returned ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`API returned ${res.status}`);
 
       const contentType = res.headers.get('content-type') || '';
 
       if (contentType.includes('text/event-stream')) {
-        // Streaming response from Gemini
-        const assistantMessage: ChatMessage = {
-          id: assistantMessageId,
-          role: 'assistant',
-          content: '',
-          isStreaming: true,
-        };
+        const assistantMessage: ChatMessage = { id: assistantMessageId, role: 'assistant', content: '', isStreaming: true };
         setMessages(prev => [...prev, assistantMessage]);
         setIsTyping(false);
 
@@ -238,10 +218,8 @@ export default function Dashboard() {
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-
             const chunk = decoder.decode(value, { stream: true });
             const lines = chunk.split('\n');
-
             for (const line of lines) {
               if (line.startsWith('data: ')) {
                 const data = line.slice(6);
@@ -250,76 +228,35 @@ export default function Dashboard() {
                   const parsed = JSON.parse(data);
                   if (parsed.text) {
                     fullContent += parsed.text;
-                    setMessages(prev =>
-                      prev.map(msg =>
-                        msg.id === assistantMessageId
-                          ? { ...msg, content: fullContent }
-                          : msg,
-                      ),
-                    );
+                    setMessages(prev => prev.map(msg => msg.id === assistantMessageId ? { ...msg, content: fullContent } : msg));
                   }
-                } catch {
-                  // Skip malformed chunks
-                }
+                } catch { /* skip */ }
               }
             }
           }
-          setMessages(prev =>
-            prev.map(msg =>
-              msg.id === assistantMessageId
-                ? { ...msg, isStreaming: false }
-                : msg,
-            ),
-          );
+          setMessages(prev => prev.map(msg => msg.id === assistantMessageId ? { ...msg, isStreaming: false } : msg));
         }
       } else {
-        // Non-streaming JSON response (fallback mode)
         const data = await res.json();
         const responseText = data.message || "I'm having trouble responding right now. Please try again.";
 
-        const assistantMessage: ChatMessage = {
-          id: assistantMessageId,
-          role: 'assistant',
-          content: '',
-          isStreaming: true,
-        };
+        const assistantMessage: ChatMessage = { id: assistantMessageId, role: 'assistant', content: '', isStreaming: true };
         setMessages(prev => [...prev, assistantMessage]);
         setIsTyping(false);
 
-        // Simulate streaming for fallback responses
         const words = responseText.split(' ');
         let currentContent = '';
         for (let i = 0; i < words.length; i++) {
           currentContent += (i === 0 ? '' : ' ') + words[i];
-          setMessages(prev =>
-            prev.map(msg =>
-              msg.id === assistantMessageId
-                ? { ...msg, content: currentContent }
-                : msg,
-            ),
-          );
+          setMessages(prev => prev.map(msg => msg.id === assistantMessageId ? { ...msg, content: currentContent } : msg));
           await new Promise(resolve => setTimeout(resolve, 30 + Math.random() * 20));
         }
-        setMessages(prev =>
-          prev.map(msg =>
-            msg.id === assistantMessageId
-              ? { ...msg, isStreaming: false }
-              : msg,
-          ),
-        );
+        setMessages(prev => prev.map(msg => msg.id === assistantMessageId ? { ...msg, isStreaming: false } : msg));
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return;
-
       setIsTyping(false);
-      setMessages(prev => [
-        ...prev,
-        {
-          id: assistantMessageId,
-          role: 'assistant',
-          content: "I'm having trouble connecting right now. Please try again in a moment.",
-        },
-      ]);
+      setMessages(prev => [...prev, { id: assistantMessageId, role: 'assistant', content: "I'm having trouble connecting right now. Please try again in a moment." }]);
     }
   }, [inputValue, isTyping, messages, userProfile]);
 
@@ -341,110 +278,101 @@ export default function Dashboard() {
     );
   }
 
+  const triedCount = triedTools.filter(id => tools.some(t => t.id === id)).length;
+
   return (
     <div className="flex w-full h-screen bg-royal fade-in">
       <Sidebar />
 
-      {/* Main Content */}
-      <main className="flex-1 h-full overflow-hidden relative">
-        <div className="p-8 lg:p-12 max-w-5xl mx-auto h-full flex flex-col">
-          {/* Accordion Tool Suggestions */}
-          {tools.length > 0 && (
-            <div className="mb-8 flex-shrink-0">
-              <button
-                onClick={() => setAccordionOpen(!accordionOpen)}
-                className="w-full flex items-center justify-between p-6 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/[0.07] transition-colors group"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-full bg-chartreuse/20 flex items-center justify-center text-chartreuse">
-                    <Sparkle size={20} />
-                  </div>
-                  <div className="text-left">
-                    <h3 className="text-lg font-semibold text-white">Weekly Tool Suggestions</h3>
-                    <p className="text-sm text-white/50">{tools.length} AI tools curated for you this week</p>
-                  </div>
-                </div>
-                {accordionOpen ? (
-                  <CaretUp size={20} className="text-white/40 group-hover:text-white/60 transition-all" />
-                ) : (
-                  <CaretDown size={20} className="text-white/40 group-hover:text-white/60 transition-all" />
-                )}
-              </button>
+      <main className="flex-1 h-full overflow-hidden relative flex flex-col">
+        {/* Top 1/3: Compact Shadcn-style Accordion */}
+        <div className="flex-shrink-0 max-h-[33vh] overflow-y-auto scrollbar-hide relative">
+          <div className="px-6 lg:px-10 pt-6 pb-2">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <Sparkle size={18} className="text-chartreuse" weight="fill" />
+                <h2 className="text-sm font-semibold text-white/80 uppercase tracking-wider">Weekly Tools</h2>
+              </div>
+              <span className="text-xs text-white/40 font-mono">{triedCount}/{tools.length} tried</span>
+            </div>
 
-              {accordionOpen && (
-                <div className="mt-4 space-y-3 max-h-[40vh] overflow-y-auto scrollbar-hide">
-                  {tools.map(tool => (
-                    <div key={tool.id} className="group bg-white/5 border border-white/10 p-5 rounded-2xl hover:bg-white/[0.07] transition-all">
-                      <div className="flex items-start gap-4">
-                        <div className={`w-12 h-12 rounded-xl ${tool.color} flex items-center justify-center shrink-0`}>
-                          <Robot size={20} className="text-royal" />
+            {/* Accordion: vertically stacked headings that reveal details on click */}
+            <div className="border border-white/10 rounded-xl overflow-hidden divide-y divide-white/[0.06]">
+              {tools.map((tool, index) => (
+                <div key={tool.id}>
+                  <button
+                    onClick={() => setExpandedTool(expandedTool === tool.id ? null : tool.id)}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.03] transition-all text-left"
+                  >
+                    <span className="text-[10px] text-white/20 font-mono w-5 shrink-0">{String(index + 1).padStart(2, '0')}</span>
+                    <div className={`w-7 h-7 rounded-lg ${tool.color} flex items-center justify-center shrink-0`}>
+                      <Robot size={12} className="text-royal" />
+                    </div>
+                    <span className="font-medium text-white text-sm flex-1 truncate">{tool.name}</span>
+                    <span className="text-xs text-white/35 truncate max-w-[180px] hidden md:block">{tool.description}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.06] text-white/40 shrink-0 hidden sm:block">{tool.category}</span>
+                    {triedTools.includes(tool.id) && <span className="w-1.5 h-1.5 rounded-full bg-chartreuse shrink-0" />}
+                    <CaretDown size={12} className={`text-white/25 transition-transform duration-200 shrink-0 ${expandedTool === tool.id ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  <div className={`overflow-hidden transition-all duration-200 ease-out ${expandedTool === tool.id ? 'max-h-32 opacity-100' : 'max-h-0 opacity-0'}`}>
+                    <div className="px-4 pb-3 pt-1 bg-white/[0.02]">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <div className={`w-9 h-9 rounded-xl ${tool.color} flex items-center justify-center shrink-0`}>
+                          <Robot size={16} className="text-royal" />
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex justify-between items-start mb-2">
-                            <h4 className="font-semibold text-white">{tool.name}</h4>
-                            <span className="text-xs px-2 py-1 rounded-full bg-white/10 text-white/60 shrink-0 ml-2">{tool.category}</span>
-                          </div>
-                          <p className="text-sm text-white/60 leading-relaxed mb-3">{tool.description}</p>
-                          <div className="flex items-center gap-2">
-                            <a
-                              href={tool.website}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="px-4 py-1.5 rounded-lg bg-white/10 text-white text-sm font-medium hover:bg-white/20 transition-colors inline-flex items-center gap-2"
-                            >
-                              Explore <ArrowUpRight size={14} />
-                            </a>
-                            <button
-                              onClick={() => handleMarkAsTried(tool.id)}
-                              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                                triedTools.includes(tool.id)
-                                  ? 'bg-chartreuse/20 text-chartreuse'
-                                  : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white/60'
-                              }`}
-                            >
-                              {triedTools.includes(tool.id) ? 'Tried' : 'Mark Tried'}
-                            </button>
-                          </div>
+                        <div className="flex-1 min-w-[160px]">
+                          <h4 className="font-semibold text-white text-sm">{tool.name}</h4>
+                          <p className="text-[11px] text-white/45 mt-0.5 line-clamp-1">{tool.description}</p>
+                        </div>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.06] text-white/40">{tool.category}</span>
+                        <div className="flex items-center gap-1">
+                          {tool.website && <a href={tool.website} target="_blank" rel="noopener noreferrer" className="p-1 rounded hover:bg-white/10 text-white/30 hover:text-white"><Globe size={14} /></a>}
+                          {tool.twitter && <a href={tool.twitter} target="_blank" rel="noopener noreferrer" className="p-1 rounded hover:bg-white/10 text-white/30 hover:text-white"><XLogo size={14} /></a>}
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <a href={tool.website} target="_blank" rel="noopener noreferrer" className="px-2.5 py-1 rounded-lg bg-white/10 text-white text-[11px] font-medium hover:bg-white/20 transition-colors inline-flex items-center gap-1">
+                            Explore <ArrowUpRight size={10} />
+                          </a>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleMarkAsTried(tool.id); }}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${triedTools.includes(tool.id) ? 'bg-chartreuse/20 text-chartreuse' : 'bg-white/5 text-white/35 hover:bg-white/10'}`}
+                          >
+                            {triedTools.includes(tool.id) ? 'Tried' : 'Mark Tried'}
+                          </button>
                         </div>
                       </div>
                     </div>
-                  ))}
+                  </div>
                 </div>
-              )}
+              ))}
             </div>
-          )}
+          </div>
 
-          {/* Chat Interface */}
-          <div className="flex-1 flex flex-col bg-white/5 border border-white/10 rounded-2xl overflow-hidden min-h-0">
-            {/* Chat Header */}
-            <div className="h-14 border-b border-white/10 flex items-center justify-between px-6 bg-white/5 shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-chartreuse animate-pulse" />
-                <span className="font-medium text-white text-sm">Forge AI Coach</span>
-              </div>
-            </div>
+          {/* Fade gradient at bottom */}
+          <div className="sticky bottom-0 h-10 bg-gradient-to-t from-royal to-transparent pointer-events-none" />
+        </div>
 
-            {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide">
-              <div className="text-center text-xs text-white/30 my-4">Today</div>
-
+        {/* Bottom 2/3: Chat Interface */}
+        <div className="flex-1 flex flex-col min-h-0">
+          <div className="flex-1 overflow-y-auto scrollbar-hide relative">
+            <div className="sticky top-0 h-6 bg-gradient-to-b from-royal to-transparent z-10 pointer-events-none" />
+            <div className="px-6 lg:px-10 pb-4 space-y-4">
               {messages.map((message) => (
                 <div key={message.id}>
                   {message.role === 'assistant' ? (
-                    <div className="flex gap-4 max-w-2xl">
-                      <div className="w-8 h-8 rounded-full bg-chartreuse/20 text-chartreuse flex items-center justify-center shrink-0 mt-1">
-                        <Sparkle size={16} weight="fill" />
+                    <div className="flex gap-3 max-w-2xl">
+                      <div className="w-7 h-7 rounded-full bg-chartreuse/20 text-chartreuse flex items-center justify-center shrink-0 mt-1">
+                        <Sparkle size={14} weight="fill" />
                       </div>
-                      <div className="bg-white/10 p-4 rounded-2xl rounded-tl-none text-white leading-relaxed prose prose-invert prose-sm max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-strong:text-white prose-a:text-phoenix">
+                      <div className="bg-white/[0.06] p-4 rounded-2xl rounded-tl-none text-white leading-relaxed prose prose-invert prose-sm max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-strong:text-white prose-a:text-phoenix">
                         <ReactMarkdown>{message.content}</ReactMarkdown>
-                        {message.isStreaming && (
-                          <span className="inline-block w-1.5 h-4 bg-chartreuse ml-1 animate-pulse" />
-                        )}
+                        {message.isStreaming && <span className="inline-block w-1.5 h-4 bg-chartreuse ml-1 animate-pulse" />}
                       </div>
                     </div>
                   ) : (
-                    <div className="flex gap-4 max-w-2xl ml-auto flex-row-reverse">
-                      <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 mt-1">
+                    <div className="flex gap-3 max-w-2xl ml-auto flex-row-reverse">
+                      <div className="w-7 h-7 rounded-full overflow-hidden shrink-0 mt-1">
                         <img
                           src={profile?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.name || 'User')}&background=ECA5CB&color=fff`}
                           className="w-full h-full object-cover"
@@ -459,17 +387,16 @@ export default function Dashboard() {
                 </div>
               ))}
 
-              {/* Typing Indicator */}
               {isTyping && (
-                <div className="flex gap-4 max-w-2xl">
-                  <div className="w-8 h-8 rounded-full bg-chartreuse/20 text-chartreuse flex items-center justify-center shrink-0 mt-1">
-                    <Sparkle size={16} weight="fill" />
+                <div className="flex gap-3 max-w-2xl">
+                  <div className="w-7 h-7 rounded-full bg-chartreuse/20 text-chartreuse flex items-center justify-center shrink-0 mt-1">
+                    <Sparkle size={14} weight="fill" />
                   </div>
-                  <div className="bg-white/10 px-4 py-3 rounded-2xl rounded-tl-none">
+                  <div className="bg-white/[0.06] px-4 py-3 rounded-2xl rounded-tl-none">
                     <div className="flex items-center gap-1">
-                      <div className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <div className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <div className="w-2 h-2 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                      <div className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <div className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <div className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                     </div>
                   </div>
                 </div>
@@ -477,27 +404,28 @@ export default function Dashboard() {
 
               <div ref={messagesEndRef} />
             </div>
+          </div>
 
-            {/* Input Area */}
-            <div className="p-4 border-t border-white/10 shrink-0">
-              <div className="relative">
-                <input
-                  type="text"
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyDown={handleKeyPress}
-                  placeholder="Message Forge..."
-                  className="w-full bg-white/5 border border-white/10 rounded-xl pl-6 pr-14 py-3.5 text-white placeholder-white/40 focus:outline-none focus:border-chartreuse/50 focus:ring-1 focus:ring-chartreuse/50 transition-all"
-                  disabled={isTyping}
-                />
-                <button
-                  onClick={handleSendMessage}
-                  disabled={!inputValue.trim() || isTyping}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-chartreuse text-royal rounded-lg hover:bg-chartreuse/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <PaperPlaneRight size={18} />
-                </button>
-              </div>
+          {/* Fixed Input */}
+          <div className="shrink-0 px-6 lg:px-10 pb-5 pt-3 border-t border-white/5">
+            <div className="relative max-w-3xl mx-auto">
+              <input
+                type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyPress}
+                placeholder="Message Forge..."
+                className="w-full bg-white/5 border border-white/10 rounded-xl pl-5 pr-12 py-3.5 text-white placeholder-white/30 focus:outline-none focus:border-chartreuse/50 focus:ring-1 focus:ring-chartreuse/50 transition-all caret-chartreuse"
+                disabled={isTyping}
+                autoFocus
+              />
+              <button
+                onClick={handleSendMessage}
+                disabled={!inputValue.trim() || isTyping}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-chartreuse text-royal rounded-lg hover:bg-chartreuse/90 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <PaperPlaneRight size={16} />
+              </button>
             </div>
           </div>
         </div>

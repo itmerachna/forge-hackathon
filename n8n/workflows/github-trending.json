@@ -1,0 +1,81 @@
+{
+  "name": "Forge - GitHub Trending Scrape",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "days", "daysInterval": 1 }]
+        }
+      },
+      "name": "Daily Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [250, 300],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "url": "https://api.github.com/search/repositories?q=topic:ai+topic:tool+created:>{{$now.minus(7, 'days').toISODate()}}&sort=stars&order=desc&per_page=20",
+        "authentication": "genericCredentialType",
+        "options": {
+          "headers": {
+            "parameters": [{ "name": "Accept", "value": "application/vnd.github.v3+json" }]
+          }
+        }
+      },
+      "name": "GitHub Search AI Tools",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [500, 200],
+      "typeVersion": 3
+    },
+    {
+      "parameters": {
+        "url": "https://api.github.com/search/repositories?q=topic:generative-ai+topic:creative+created:>{{$now.minus(7, 'days').toISODate()}}&sort=stars&order=desc&per_page=20",
+        "authentication": "genericCredentialType",
+        "options": {
+          "headers": {
+            "parameters": [{ "name": "Accept", "value": "application/vnd.github.v3+json" }]
+          }
+        }
+      },
+      "name": "GitHub Search Creative AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [500, 400],
+      "typeVersion": 3
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [{ "value1": "={{ $json.stargazers_count }}", "operation": "largerEqual", "value2": 20 }]
+        }
+      },
+      "name": "Filter by Stars",
+      "type": "n8n-nodes-base.filter",
+      "position": [750, 300],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "url": "={{$env.FORGE_API_URL}}/api/discover-tools",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "sources", "value": "[\"github\"]" }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Trigger Forge Discovery",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1000, 300],
+      "typeVersion": 3
+    }
+  ],
+  "connections": {
+    "Daily Schedule": { "main": [[{ "node": "GitHub Search AI Tools", "type": "main", "index": 0 }, { "node": "GitHub Search Creative AI", "type": "main", "index": 0 }]] },
+    "GitHub Search AI Tools": { "main": [[{ "node": "Filter by Stars", "type": "main", "index": 0 }]] },
+    "GitHub Search Creative AI": { "main": [[{ "node": "Filter by Stars", "type": "main", "index": 0 }]] },
+    "Filter by Stars": { "main": [[{ "node": "Trigger Forge Discovery", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}
