@@ -33,9 +33,10 @@ export async function POST(request: NextRequest) {
         },
       });
     } catch (geminiError) {
-      console.error('Gemini API error, falling back:', geminiError);
+      const errMsg = geminiError instanceof Error ? geminiError.message : String(geminiError);
+      console.error('Gemini API error:', errMsg, geminiError);
       const fallbackResponse = generateFallbackResponse(message, conversationHistory || []);
-      return NextResponse.json({ message: fallbackResponse });
+      return NextResponse.json({ message: fallbackResponse, _debug: errMsg });
     }
   } catch (error) {
     console.error('Chat API error:', error);

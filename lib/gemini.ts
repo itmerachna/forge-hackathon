@@ -54,10 +54,13 @@ export async function generateChatResponse(
     throw new Error('Gemini API key not configured');
   }
 
-  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash' });
-
   const systemPrompt = buildSystemPrompt(userProfile);
   const contextAddition = context ? `\n\nAdditional context: ${context}` : '';
+
+  const model = getGenAI().getGenerativeModel({
+    model: 'gemini-1.5-flash',
+    systemInstruction: systemPrompt + contextAddition,
+  });
 
   const history = conversationHistory
     .filter((msg) => msg.content && !msg.isStreaming)
@@ -66,13 +69,7 @@ export async function generateChatResponse(
       parts: [{ text: msg.content }],
     }));
 
-  const chat = model.startChat({
-    history: [
-      { role: 'user', parts: [{ text: `System instructions: ${systemPrompt}${contextAddition}` }] },
-      { role: 'model', parts: [{ text: 'Understood! I\'m Forge, your AI learning coach. I\'m here to help you discover and master AI tools. How can I help you today?' }] },
-      ...history,
-    ],
-  });
+  const chat = model.startChat({ history });
 
   const result = await chat.sendMessage(message);
   const response = result.response;
@@ -89,10 +86,13 @@ export async function generateChatResponseStream(
     throw new Error('Gemini API key not configured');
   }
 
-  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash' });
-
   const systemPrompt = buildSystemPrompt(userProfile);
   const contextAddition = context ? `\n\nAdditional context: ${context}` : '';
+
+  const model = getGenAI().getGenerativeModel({
+    model: 'gemini-1.5-flash',
+    systemInstruction: systemPrompt + contextAddition,
+  });
 
   const history = conversationHistory
     .filter((msg) => msg.content && !msg.isStreaming)
@@ -101,13 +101,7 @@ export async function generateChatResponseStream(
       parts: [{ text: msg.content }],
     }));
 
-  const chat = model.startChat({
-    history: [
-      { role: 'user', parts: [{ text: `System instructions: ${systemPrompt}${contextAddition}` }] },
-      { role: 'model', parts: [{ text: 'Understood! I\'m Forge, your AI learning coach. I\'m here to help you discover and master AI tools. How can I help you today?' }] },
-      ...history,
-    ],
-  });
+  const chat = model.startChat({ history });
 
   const result = await chat.sendMessageStream(message);
 
@@ -124,6 +118,7 @@ export async function generateChatResponseStream(
         controller.enqueue(encoder.encode('data: [DONE]\n\n'));
         controller.close();
       } catch (error) {
+        console.error('Gemini stream error:', error);
         controller.error(error);
       }
     },
