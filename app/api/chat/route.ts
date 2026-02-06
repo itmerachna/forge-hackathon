@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateChatResponseStream, isGeminiConfigured } from '../../../lib/gemini';
+import { needsSummarization, summarizeConversation, buildContextFromSummaries } from '../../../lib/summarize';
+import { trackLLMCall } from '../../../lib/opik';
 import type { ChatRequest } from '../../../types';
 
 export async function POST(request: NextRequest) {
@@ -18,11 +20,20 @@ export async function POST(request: NextRequest) {
     }
 
     try {
+      // Context rot prevention: summarize long conversations
+      let enrichedContext = context || '';
+      if (conversationHistory && needsSummarization(conversationHistory)) {
+        const summary = await summarizeConversation(conversationHistory.slice(0, -5));
+        if (summary) {
+          enrichedContext = buildContextFromSummaries([summary]) + (enrichedContext ? '\n\n' + enrichedContext : '');
+        }
+      }
+
       const stream = await generateChatResponseStream(
         message,
         conversationHistory || [],
         userProfile,
-        context,
+        enrichedContext || context,
       );
 
       return new Response(stream, {

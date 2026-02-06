@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase, isSupabaseConfigured } from '../../../lib/supabase';
 import { isGeminiConfigured } from '../../../lib/gemini';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateWithCritique } from '../../../lib/critique';
+import { trackRecommendation } from '../../../lib/opik';
 
 export async function GET(request: NextRequest) {
   try {
@@ -85,15 +87,42 @@ Return ONLY a JSON array of tool IDs in order of relevance (most relevant first)
         const match = text.match(/\[[\d,\s]+\]/);
         if (match) {
           const rankedIds = JSON.parse(match[0]) as number[];
-          const rankedTools = rankedIds
+          let rankedTools = rankedIds
             .map(idx => availableTools[idx - 1])
             .filter(Boolean)
             .slice(0, 10);
 
-          if (rankedTools.length > 0) {
+          // Self-critique loop: validate recommendations
+          const { recommendations: critiqued, critique, attempts } = await generateWithCritique(
+            rankedTools.length > 0 ? rankedTools : availableTools.slice(0, 10),
+            {
+              focus: userPrefs.focus,
+              skill_level: userPrefs.skill_level,
+              weekly_hours: userPrefs.weekly_hours,
+              preferences: userPrefs.preferences,
+              existing_tools: userPrefs.existing_tools,
+              goal: userPrefs.goal,
+            },
+          );
+
+          // Track to Opik
+          await trackRecommendation({
+            userProfile: userPrefs,
+            recommendations: critiqued,
+            critiqueResult: critique,
+            source: 'gemini_ranked_with_critique',
+            regenerated: attempts > 1,
+          });
+
+          if (critiqued.length > 0) {
             return NextResponse.json({
-              recommendations: rankedTools,
-              source: 'gemini_ranked'
+              recommendations: critiqued,
+              source: 'gemini_ranked_with_critique',
+              critique: {
+                score: critique.score,
+                passed: critique.passed,
+                attempts,
+              },
             });
           }
         }
@@ -121,8 +150,17 @@ Return ONLY a JSON array of tool IDs in order of relevance (most relevant first)
       recommendations = [...availableTools].sort(() => Math.random() - 0.5);
     }
 
+    const finalRecs = recommendations.slice(0, 10);
+
+    // Track non-AI recommendations too
+    await trackRecommendation({
+      userProfile: userPrefs || {},
+      recommendations: finalRecs,
+      source: 'default',
+    });
+
     return NextResponse.json({
-      recommendations: recommendations.slice(0, 10),
+      recommendations: finalRecs,
       source: 'default'
     });
   } catch (error) {
