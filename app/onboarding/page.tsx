@@ -87,16 +87,39 @@ export default function Onboarding() {
         onboarding_completed: true,
       });
 
-      // Also save detailed preferences via API
+      // Build a readable summary for Gemini's memory
+      const lines = [
+        `Focus: ${finalAnswers.focus || 'Not specified'}`,
+        `Skill Level: ${finalAnswers.level || 'Not specified'}`,
+        `Weekly Time: ${finalAnswers.time || 'Not specified'}`,
+        finalAnswers.preferences ? `Preferences: ${finalAnswers.preferences}` : null,
+        finalAnswers.existing_tools ? `Tools: ${finalAnswers.existing_tools}` : null,
+        finalAnswers.goal ? `Goal: ${finalAnswers.goal}` : null,
+      ].filter(Boolean).join('\n');
+
+      // Save to persistent memory (correct payload format for /api/memories)
       await fetch('/api/memories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: user?.id,
-          type: 'onboarding_preferences',
-          content: JSON.stringify(finalAnswers),
+          section: 'User Profile',
+          content: lines,
         }),
-      }).catch(() => {}); // Non-blocking, best-effort save
+      }).catch(() => {});
+
+      // If user chose "Other" for focus, save extra context so Gemini understands their niche
+      if (finalAnswers.focus && !['Visual & Graphic Design', 'Art & Illustration', 'UI/UX Design', 'Frontend Development', 'No-Code Tools', '3D/Motion Design'].includes(finalAnswers.focus)) {
+        await fetch('/api/memories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: user?.id,
+            section: 'Custom Focus Area',
+            content: `User works in "${finalAnswers.focus}" — this is outside the standard categories. Tailor tool recommendations and project ideas to this specific domain. Ask follow-up questions to understand their workflow better.`,
+          }),
+        }).catch(() => {});
+      }
     } catch (error) {
       console.error('Error saving onboarding:', error);
     }
