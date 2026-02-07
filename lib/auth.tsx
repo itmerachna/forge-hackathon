@@ -164,6 +164,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setProfile(null);
     setSession(null);
+    // Clear cached data
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('userProfile');
+      localStorage.removeItem('triedTools');
+      localStorage.removeItem('chatMessages');
+      window.location.href = '/';
+    }
   };
 
   const updateProfile = async (updates: Partial<User>) => {
