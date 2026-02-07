@@ -451,7 +451,7 @@ export async function POST(request: NextRequest) {
     const results = await Promise.all(fetchPromises);
     const allTools = results.flat();
 
-    // Deduplicate by name
+    // Deduplicate by name within this batch
     const uniqueTools = allTools.reduce((acc: DiscoveredTool[], tool) => {
       if (!acc.find((t) => t.name.toLowerCase() === tool.name.toLowerCase())) {
         acc.push(tool);
@@ -459,8 +459,38 @@ export async function POST(request: NextRequest) {
       return acc;
     }, []);
 
-    // Categorize with Gemini
-    const categorizedTools = await categorizeWithGemini(uniqueTools);
+    // Pre-filter: remove tools that already exist in Supabase before calling Gemini
+    let newTools = uniqueTools;
+    if (isSupabaseConfigured()) {
+      const checks = await Promise.all(
+        uniqueTools.map(async (tool) => {
+          const { data } = await supabase
+            .from('tools')
+            .select('id')
+            .ilike('name', tool.name)
+            .single();
+          return { tool, exists: !!data };
+        })
+      );
+      newTools = checks.filter((c) => !c.exists).map((c) => c.tool);
+    }
+
+    // Only call Gemini if there are genuinely new tools to categorize
+    if (newTools.length === 0) {
+      return NextResponse.json({
+        success: true,
+        discovered: allTools.length,
+        unique: uniqueTools.length,
+        new: 0,
+        saved: 0,
+        skipped: uniqueTools.length,
+        tools: [],
+        message: 'No new tools found — all already in database',
+      });
+    }
+
+    // Categorize only new tools with Gemini
+    const categorizedTools = await categorizeWithGemini(newTools);
 
     // Save to Supabase
     const { saved, skipped } = await saveToSupabase(categorizedTools);
@@ -469,6 +499,7 @@ export async function POST(request: NextRequest) {
       success: true,
       discovered: allTools.length,
       unique: uniqueTools.length,
+      new: newTools.length,
       saved,
       skipped,
       tools: categorizedTools.filter((t) => t.isRelevant),

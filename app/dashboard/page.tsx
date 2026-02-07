@@ -21,6 +21,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [triedTools, setTriedTools] = useState<number[]>([]);
   const [tools, setTools] = useState<Tool[]>([]);
+  const [stashedTools, setStashedTools] = useState<Tool[]>([]);
   const [expandedTool, setExpandedTool] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -84,21 +85,25 @@ export default function Dashboard() {
     fetchProgress();
   }, [user?.id]);
 
-  // Fetch tools (10 per week max)
+  const WEEKLY_TOOL_LIMIT = 5;
+
+  // Fetch tools (5 active per week, rest stashed)
   useEffect(() => {
     async function fetchTools() {
       try {
         const toolsRes = await fetch('/api/tools');
         const toolsData = await toolsRes.json();
         if (toolsData.tools?.length) {
-          setTools(toolsData.tools.slice(0, 10));
+          setTools(toolsData.tools.slice(0, WEEKLY_TOOL_LIMIT));
+          setStashedTools(toolsData.tools.slice(WEEKLY_TOOL_LIMIT));
         }
 
         if (user?.id) {
           const recRes = await fetch(`/api/recommendations?user_id=${user.id}`);
           const recData = await recRes.json();
           if (recData.recommendations?.length) {
-            setTools(recData.recommendations.slice(0, 10));
+            setTools(recData.recommendations.slice(0, WEEKLY_TOOL_LIMIT));
+            setStashedTools(recData.recommendations.slice(WEEKLY_TOOL_LIMIT));
           }
         }
       } catch {
@@ -107,6 +112,17 @@ export default function Dashboard() {
     }
     fetchTools();
   }, [user?.id]);
+
+  // Swap a tool from active list with one from stash
+  const swapTool = (activeToolId: number) => {
+    if (stashedTools.length === 0) return;
+    const removedTool = tools.find(t => t.id === activeToolId);
+    const replacement = stashedTools[0];
+    if (!removedTool || !replacement) return;
+    setTools(prev => prev.map(t => t.id === activeToolId ? replacement : t));
+    setStashedTools(prev => [removedTool, ...prev.slice(1)]);
+    setExpandedTool(null);
+  };
 
   // Fetch chat history from Supabase
   useEffect(() => {
@@ -293,7 +309,10 @@ export default function Dashboard() {
                 <Sparkle size={18} className="text-chartreuse" weight="fill" />
                 <h2 className="text-sm font-semibold text-white/80 uppercase tracking-wider">Weekly Tools</h2>
               </div>
-              <span className="text-xs text-white/40 font-mono">{triedCount}/{tools.length} tried</span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-white/40 font-mono">{triedCount}/{tools.length} tried</span>
+                {stashedTools.length > 0 && <span className="text-[10px] text-white/25 font-mono">+{stashedTools.length} stashed</span>}
+              </div>
             </div>
 
             {/* Accordion: vertically stacked headings that reveal details on click */}
@@ -340,6 +359,15 @@ export default function Dashboard() {
                           >
                             {triedTools.includes(tool.id) ? 'Tried' : 'Mark Tried'}
                           </button>
+                          {stashedTools.length > 0 && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); swapTool(tool.id); }}
+                              className="px-2.5 py-1 rounded-lg bg-white/5 text-white/35 text-[11px] font-medium hover:bg-phoenix/20 hover:text-phoenix transition-colors"
+                              title="Swap with a different tool from stash"
+                            >
+                              Swap
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>

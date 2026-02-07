@@ -197,7 +197,7 @@ function generateFallbackResponse(message: string, history: ConversationMsg[]): 
     `Interesting! Tell me a bit more about what you're working on — are you doing design, development, content creation, or something else? I'll find the right AI tools for you.`,
     `I want to make sure I give you the best recommendation. Could you share:\n\n1. What kind of project is this for?\n2. What's your experience with AI tools so far?\n\nThat way I can point you to something that actually fits.`,
     `Here are some directions we can explore:\n\n• **Video creation** — AKOOL, Descript, Luma AI\n• **Design & images** — KREA AI, PixAI, PicWish\n• **Websites** — Relume, Anything, Gamma\n• **Audio** — RecCloud, Descript\n\nWhich area catches your eye?`,
-    `I have 10 AI tools in your weekly suggestions — from video editors to website builders to design suites. Open the **Weekly Tool Suggestions** above to browse them, or just tell me what you need and I'll narrow it down.`,
+    `I have 5 AI tools in your weekly suggestions — from video editors to website builders to design suites. Open the **Weekly Tools** above to browse them, or tell me what you need and I'll narrow it down. You can also swap any tool for a different one from the stash!`,
     `Let me help you find the right fit! Some questions that help:\n\n• What do you want to create?\n• Are you looking for something free to start?\n• Do you prefer simple/guided or powerful/flexible?\n\nOr just describe your project and I'll take it from there.`,
   ];
 
