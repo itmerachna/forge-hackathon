@@ -45,14 +45,15 @@ export default function SignUpPage() {
         return;
       }
 
-      if (result.session) {
-        console.log('[Forge Debug] Session exists, redirecting to profile-setup');
-        router.push('/auth/profile-setup');
-      } else {
-        console.log('[Forge Debug] No session returned — showing confirmation screen');
-        setConfirmationSent(true);
+      if (!result.session) {
+        // No session + no error = email already exists (Supabase hides this for security)
+        setError('This email is already registered. Please sign in instead.');
         setLoading(false);
+        return;
       }
+
+      console.log('[Forge Debug] Session exists, redirecting to profile-setup');
+      router.push('/auth/profile-setup');
     } catch (err) {
       console.error('[Forge Debug] Caught exception:', err);
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');

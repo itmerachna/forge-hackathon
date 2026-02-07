@@ -191,11 +191,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         updated_at: new Date().toISOString(),
       });
 
-    if (!error) {
-      await refreshProfile();
+    if (error) {
+      // Friendlier message for duplicate email constraint
+      if (error.message?.includes('users_email_key')) {
+        return { error: new Error('This email is already associated with another account.') };
+      }
+      return { error: error as Error | null };
     }
 
-    return { error: error as Error | null };
+    await refreshProfile();
+    return { error: null };
   };
 
   const value = {
