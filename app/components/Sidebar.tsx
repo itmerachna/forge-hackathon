@@ -8,6 +8,8 @@ import {
   ChartBar,
   GearSix,
   SignOut,
+  CaretLeft,
+  CaretRight,
 } from '@phosphor-icons/react';
 import { useAuth } from '../../lib/auth';
 
@@ -16,6 +18,7 @@ export default function Sidebar() {
   const { profile, signOut } = useAuth();
   const [userProfile, setUserProfile] = useState<Record<string, string> | null>(null);
   const [triedTools, setTriedTools] = useState<number[]>([]);
+  const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -37,15 +40,23 @@ export default function Sidebar() {
   ];
 
   return (
-    <aside className="w-20 lg:w-64 bg-royal border-r border-white/10 flex flex-col justify-between py-8 px-4 transition-all duration-300">
+    <aside className={`${collapsed ? 'w-20' : 'w-20 lg:w-64'} bg-royal border-r border-white/10 flex flex-col justify-between py-8 px-4 transition-all duration-300 relative`}>
+      {/* Collapse toggle */}
+      <button
+        onClick={() => setCollapsed(!collapsed)}
+        className="absolute -right-3 top-12 w-6 h-6 rounded-full bg-royal border border-white/10 flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-colors z-10 hidden lg:flex"
+      >
+        {collapsed ? <CaretRight size={12} /> : <CaretLeft size={12} />}
+      </button>
+
       <div>
-        {/* Logo */}
-        <div className="flex items-center gap-3 px-2 mb-12 text-white">
+        {/* Logo — links to landing page */}
+        <a href="/" className="flex items-center gap-3 px-2 mb-12 text-white hover:opacity-80 transition-opacity">
           <div className="w-8 h-8 rounded-lg bg-phoenix flex items-center justify-center text-white shrink-0">
             <FireSimple size={18} weight="fill" />
           </div>
-          <span className="font-serif font-bold text-xl hidden lg:block tracking-tight">Forge</span>
-        </div>
+          {!collapsed && <span className="font-serif font-bold text-xl hidden lg:block tracking-tight">Forge</span>}
+        </a>
 
         {/* Navigation */}
         <nav className="space-y-2">
@@ -63,8 +74,8 @@ export default function Sidebar() {
                 }`}
               >
                 <Icon size={20} />
-                <span className="font-medium hidden lg:block">{item.label}</span>
-                {!isActive && item.hasNotification && (
+                {!collapsed && <span className="font-medium hidden lg:block">{item.label}</span>}
+                {!isActive && item.hasNotification && !collapsed && (
                   <span className="w-2 h-2 rounded-full bg-phoenix ml-auto hidden lg:block" />
                 )}
               </a>
@@ -75,7 +86,7 @@ export default function Sidebar() {
 
       <div>
         {/* Weekly Goal */}
-        <div className="p-4 bg-white/5 rounded-2xl hidden lg:block mb-6">
+        <div className={`p-4 bg-white/5 rounded-2xl mb-6 ${collapsed ? 'hidden' : 'hidden lg:block'}`}>
           <div className="flex justify-between items-center mb-2">
             <span className="text-xs font-bold uppercase text-white/40">Weekly Goal</span>
             <span className="text-xs font-bold text-white">{progress}%</span>
@@ -112,21 +123,23 @@ export default function Sidebar() {
                 alt="Profile"
               />
             )}
-            <div className="hidden lg:flex flex-col items-start">
-              <span className="text-sm font-medium text-white">
-                {profile?.name || 'Forge User'}
-              </span>
-              <span className="text-[10px] text-white/50">
-                @{profile?.username || 'user'}
-              </span>
-            </div>
+            {!collapsed && (
+              <div className="hidden lg:flex flex-col items-start">
+                <span className="text-sm font-medium text-white">
+                  {profile?.name || 'Forge User'}
+                </span>
+                <span className="text-[10px] text-white/50">
+                  @{profile?.username || 'user'}
+                </span>
+              </div>
+            )}
           </a>
           <button
             onClick={() => signOut()}
             className="w-full flex items-center gap-3 px-3 py-2 text-white/40 hover:text-white/60 hover:bg-white/5 rounded-xl transition-colors"
           >
             <SignOut size={18} />
-            <span className="text-xs hidden lg:block">Sign Out</span>
+            {!collapsed && <span className="text-xs hidden lg:block">Sign Out</span>}
           </button>
         </div>
       </div>
