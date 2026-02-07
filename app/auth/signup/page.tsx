@@ -14,6 +14,7 @@ export default function SignUpPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [confirmationSent, setConfirmationSent] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,16 +32,27 @@ export default function SignUpPage() {
 
     setLoading(true);
 
-    const { error } = await signUp(email, password);
+    try {
+      const { error, session } = await signUp(email, password);
 
-    if (error) {
-      setError(error.message);
+      if (error) {
+        setError(error.message);
+        setLoading(false);
+        return;
+      }
+
+      if (session) {
+        // Email confirmation disabled — user is signed in, go to profile setup
+        router.push('/auth/profile-setup');
+      } else {
+        // Email confirmation enabled — tell user to check inbox
+        setConfirmationSent(true);
+        setLoading(false);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
       setLoading(false);
-      return;
     }
-
-    // Redirect to profile setup
-    router.push('/auth/profile-setup');
   };
 
   return (
@@ -55,6 +67,22 @@ export default function SignUpPage() {
 
       {/* Card */}
       <div className="w-full max-w-md bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-8">
+        {confirmationSent ? (
+          <div className="text-center py-4">
+            <EnvelopeSimple size={48} className="text-phoenix mx-auto mb-4" />
+            <h1 className="text-2xl font-serif text-white mb-2">Check your email</h1>
+            <p className="text-magnolia/60 mb-6">
+              We sent a confirmation link to <span className="text-white font-medium">{email}</span>. Click the link to activate your account, then come back and sign in.
+            </p>
+            <Link
+              href="/auth/login"
+              className="inline-block bg-phoenix text-white font-medium px-6 py-3 rounded-lg hover:bg-orange-600 transition-colors"
+            >
+              Go to Sign In
+            </Link>
+          </div>
+        ) : (
+        <>
         <h1 className="text-2xl font-serif text-white mb-2">Create your account</h1>
         <p className="text-magnolia/60 mb-8">Start your AI learning journey with Forge</p>
 
@@ -132,6 +160,8 @@ export default function SignUpPage() {
             Sign in
           </Link>
         </p>
+        </>
+        )}
       </div>
     </div>
   );
