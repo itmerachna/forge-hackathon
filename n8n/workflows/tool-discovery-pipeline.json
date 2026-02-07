@@ -77,22 +77,17 @@
     },
     {
       "parameters": {
-        "url": "={{$env.FORGE_API_URL}}/api/tools",
+        "url": "={{$env.FORGE_API_URL}}/api/discover-tools",
         "method": "POST",
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
-            { "name": "name", "value": "={{ $json.name }}" },
-            { "name": "description", "value": "={{ $json.description }}" },
-            { "name": "category", "value": "={{ $json.category }}" },
-            { "name": "website", "value": "={{ $json.website }}" },
-            { "name": "pricing", "value": "={{ $json.pricing }}" },
-            { "name": "difficulty", "value": "={{ $json.difficulty }}" }
+            { "name": "sources", "value": "[\"producthunt\", \"github\", \"hackernews\"]" }
           ]
         },
         "options": {}
       },
-      "name": "Insert into Supabase",
+      "name": "Trigger Forge Discovery",
       "type": "n8n-nodes-base.httpRequest",
       "position": [1000, 300],
       "typeVersion": 3
