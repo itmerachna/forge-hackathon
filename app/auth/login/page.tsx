@@ -43,8 +43,8 @@ export default function LoginPage() {
 
       {/* Card */}
       <div className="w-full max-w-md bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-8">
-        <h1 className="text-2xl font-serif text-white mb-2">Welcome back</h1>
-        <p className="text-magnolia/60 mb-8">Sign in to continue your learning journey</p>
+        <h1 className="text-2xl font-serif text-white mb-2 text-center">Welcome back</h1>
+        <p className="text-magnolia/60 mb-8 text-center">Sign in to continue your learning journey</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (

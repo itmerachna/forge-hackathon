@@ -86,8 +86,8 @@ export default function SignUpPage() {
           </div>
         ) : (
         <>
-        <h1 className="text-2xl font-serif text-white mb-2">Create your account</h1>
-        <p className="text-magnolia/60 mb-8">Start your AI learning journey with Forge</p>
+        <h1 className="text-2xl font-serif text-white mb-2 text-center">Create your account</h1>
+        <p className="text-magnolia/60 mb-8 text-center">Start your AI learning journey with Forge</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
