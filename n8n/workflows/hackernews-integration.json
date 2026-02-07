@@ -1,0 +1,83 @@
+{
+  "name": "Forge - HackerNews AI Tool Discovery",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "days", "daysInterval": 1 }]
+        }
+      },
+      "name": "Daily Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [250, 300],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "url": "https://hn.algolia.com/api/v1/search?query=AI%20tool&tags=show_hn&hitsPerPage=20",
+        "options": {}
+      },
+      "name": "HN Show AI Tools",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [500, 200],
+      "typeVersion": 3
+    },
+    {
+      "parameters": {
+        "url": "https://hn.algolia.com/api/v1/search?query=AI%20design%20tool&tags=story&hitsPerPage=15",
+        "options": {}
+      },
+      "name": "HN AI Design Stories",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [500, 400],
+      "typeVersion": 3
+    },
+    {
+      "parameters": {
+        "url": "https://hn.algolia.com/api/v1/search?query=generative%20AI%20creative&tags=story&hitsPerPage=15",
+        "options": {}
+      },
+      "name": "HN Generative AI Stories",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [500, 600],
+      "typeVersion": 3
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [{ "value1": "={{ $json.points }}", "operation": "largerEqual", "value2": 10 }],
+          "string": [{ "value1": "={{ $json.url }}", "operation": "isNotEmpty" }]
+        }
+      },
+      "name": "Filter Quality Posts",
+      "type": "n8n-nodes-base.filter",
+      "position": [750, 400],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "url": "={{$env.FORGE_API_URL}}/api/discover-tools",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "sources", "value": "[\"hackernews\"]" }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Trigger Forge Discovery",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1000, 400],
+      "typeVersion": 3
+    }
+  ],
+  "connections": {
+    "Daily Schedule": { "main": [[{ "node": "HN Show AI Tools", "type": "main", "index": 0 }, { "node": "HN AI Design Stories", "type": "main", "index": 0 }, { "node": "HN Generative AI Stories", "type": "main", "index": 0 }]] },
+    "HN Show AI Tools": { "main": [[{ "node": "Filter Quality Posts", "type": "main", "index": 0 }]] },
+    "HN AI Design Stories": { "main": [[{ "node": "Filter Quality Posts", "type": "main", "index": 0 }]] },
+    "HN Generative AI Stories": { "main": [[{ "node": "Filter Quality Posts", "type": "main", "index": 0 }]] },
+    "Filter Quality Posts": { "main": [[{ "node": "Trigger Forge Discovery", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}
