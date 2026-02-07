@@ -213,6 +213,7 @@ export default function Dashboard() {
             existing_tools: userProfile.existing_tools,
             goal: userProfile.goal,
           } : undefined,
+          context: tools.length > 0 ? `This week's tools (${tools.length} active, ${stashedTools.length} stashed): ${tools.map(t => `${t.name} (${t.category}, ${t.pricing || 'Unknown pricing'}${triedTools.includes(t.id) ? ', already tried' : ''})`).join(', ')}` : undefined,
         }),
         signal: abortControllerRef.current.signal,
       });
