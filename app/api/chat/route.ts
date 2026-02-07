@@ -49,14 +49,44 @@ export async function POST(request: NextRequest) {
       // Load relevant skill reference based on message intent
       const skillContext = await loadSkillContext(message);
 
+      // End-of-week reflection nudge (Thu-Sun)
+      const dayOfWeek = new Date().getDay();
+      const isEndOfWeek = dayOfWeek === 0 || dayOfWeek >= 4;
+      const reflectionNudge = isEndOfWeek ? '\n\nNOTE: It\'s near the end of the week. If the conversation naturally allows it, gently remind the user they can do their weekly reflection in the Tracker page. Don\'t force it — only mention if it fits the flow.' : '';
+
       // Context rot prevention: summarize long conversations
-      let enrichedContext = (context || '') + skillContext;
+      let enrichedContext = (context || '') + skillContext + reflectionNudge;
       if (conversationHistory && needsSummarization(conversationHistory)) {
         const summary = await summarizeConversation(conversationHistory.slice(0, -5));
         if (summary) {
           enrichedContext = buildContextFromSummaries([summary]) + (enrichedContext ? '\n\n' + enrichedContext : '');
+
+          // Persist summary to Supabase
+          try {
+            const baseUrl = request.nextUrl.origin;
+            await fetch(`${baseUrl}/api/memories`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                user_id: userProfile?.user_id || 'anonymous',
+                action: 'summarize',
+                messages: conversationHistory.slice(0, -5),
+              }),
+            });
+          } catch {
+            // Silent fail — persistence is best-effort
+          }
         }
       }
+
+      // Track chat call in Opik
+      trackLLMCall({
+        name: 'chat-stream',
+        input: { message, hasHistory: (conversationHistory?.length || 0) > 0 },
+        output: '[streaming]',
+        model: 'gemini-2.5-flash-lite',
+        tags: ['chat', 'streaming'],
+      }).catch(() => {});
 
       const stream = await generateChatResponseStream(
         message,
