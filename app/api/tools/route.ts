@@ -114,6 +114,18 @@ export async function POST(request: NextRequest) {
     }
 
     const tool = await request.json();
+
+    // Check for duplicate by name (case-insensitive)
+    const { data: existing } = await supabase
+      .from('tools')
+      .select('id')
+      .ilike('name', tool.name)
+      .single();
+
+    if (existing) {
+      return NextResponse.json({ message: 'Tool already exists', id: existing.id }, { status: 200 });
+    }
+
     const { data, error } = await supabase.from('tools').insert(tool).select().single();
 
     if (error) {
