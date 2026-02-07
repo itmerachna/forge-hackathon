@@ -1,37 +1,62 @@
-# Weekly Reflection Analysis
+# Weekly Reflection Analysis — Reference for Forge AI Coach
 
-## Overview
-After you complete your weekly reflection, Forge's AI analyzes your responses to generate personalized insights, track patterns over time, and improve future recommendations.
+Use this when analyzing a user's weekly reflection to generate insights. Focus on actionable patterns, not generic encouragement.
 
-## What Gets Analyzed
+## Analysis Framework
 
-### Tool Engagement Patterns
-- Which tools did you spend the most time with?
-- Did free or paid tools resonate more?
-- Are you gravitating toward a specific category?
+For each reflection, evaluate across these dimensions:
 
-### Skill Progression Signals
-- Are you moving from beginner tools to intermediate ones?
-- Which tool features are you using (basic vs. advanced)?
-- How quickly are you getting comfortable with new tools?
+### 1. Engagement Score (How active were they?)
+- **High (4-5 tools tried, built something):** "You crushed it this week." Suggest a more ambitious project.
+- **Medium (2-3 tools tried, explored but didn't build):** "Solid exploration week." Suggest one specific quick win.
+- **Low (0-1 tools tried):** "No pressure — let's find one tool that actually fits your week." Simplify.
 
-### Motivation & Blockers
-- What energizes you about certain tools?
-- Common blockers: time, complexity, cost, relevance
-- How does your mood correlate with tool adoption?
+### 2. Tool-User Fit (Are they using the right tools?)
+Check for mismatches:
+- Beginner using Advanced tools → suggest stepping stone tools
+- Advanced user on Beginner tools → they might be bored, suggest something more powerful
+- Paying for tools they rarely use → flag it gently
+- Ignoring free tools that fit their needs → highlight them
 
-## How Insights Are Generated
-1. **Pattern Matching**: Compare this week's reflection with previous weeks
-2. **Sentiment Analysis**: Gauge enthusiasm vs. frustration levels
-3. **Goal Alignment**: Check if explored tools align with your 4-week goal
-4. **Recommendation Tuning**: Adjust next week's suggestions based on what worked
+### 3. Learning Trajectory (Are they progressing?)
+Compare this week to previous weeks:
+- Trying new categories → exploring phase, keep variety
+- Going deeper in one category → specializing, support it
+- Repeating same tools without building → stuck, needs a project push
+- Building more each week → great trajectory, acknowledge it
 
-## Output
-After analysis, Forge updates your learning profile with:
-- **Strengths**: Tools and categories where you're thriving
-- **Growth Areas**: Skills or tool types to push further on
-- **Adjusted Recommendations**: Next week's tools tuned to your trajectory
-- **Encouragement**: Specific wins to celebrate from the week
+### 4. Preference Signals (What do they actually want?)
+Extract from their reflection language:
+- "It was fast" / "Easy to use" → values speed and simplicity
+- "I could customize everything" → values control and depth
+- "The free tier was enough" → price-sensitive
+- "I shared it with my team" → social/collaborative motivation
+- "I didn't have time" → needs shorter projects (30 min max)
+- "I wasn't sure what to make" → needs project briefs, not tool lists
 
-## Memory Update
-Key learnings from each reflection are stored in your UserMemories to maintain continuity across weeks. This prevents "context rot" — ensuring Forge always remembers your journey even in long conversations.
+## Insight Template
+
+Generate insights in this format (keep it to 3-4 sentences):
+
+```
+[Specific observation about this week]. [Pattern or trend if visible].
+[One actionable suggestion for next week]. [Encouragement tied to something concrete they did].
+```
+
+Example: "You gravitated toward video tools again — AKOOL and RecCloud both clicked for you. That's two weeks in a row, so video content might be your sweet spot. Next week, try combining them: record in RecCloud, edit in Descript, and add an AI avatar intro with AKOOL. You'd have a full content pipeline."
+
+Bad example: "Great job this week! You're making wonderful progress. Keep exploring and trying new things!" (Too generic, says nothing specific.)
+
+## Next Week Adjustments
+
+Based on the analysis, adjust recommendations:
+
+| This week's signal | Next week's action |
+|--------------------|-------------------|
+| Loved a specific tool | Include it again + suggest its "power feature" |
+| Struggled with a tool | Replace with easier alternative in same category |
+| Built something | Suggest a follow-up project that levels up |
+| Didn't build anything | Assign one 30-min quick win with clear deliverable |
+| Mentioned a new interest | Add one tool from that category |
+| Complained about pricing | Swap paid tools for free alternatives |
+| Asked about a tool not in their list | Add it to next week if relevant |

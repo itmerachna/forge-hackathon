@@ -2,7 +2,33 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateChatResponseStream, isGeminiConfigured } from '../../../lib/gemini';
 import { needsSummarization, summarizeConversation, buildContextFromSummaries } from '../../../lib/summarize';
 import { trackLLMCall } from '../../../lib/opik';
+import { promises as fs } from 'fs';
+import path from 'path';
 import type { ChatRequest } from '../../../types';
+
+// Load a skill file as additional context for Gemini
+async function loadSkillContext(message: string): Promise<string> {
+  const msg = message.toLowerCase();
+  let skillFile = '';
+
+  if (/project|idea|build|make|create|what (can|should) i/.test(msg)) {
+    skillFile = 'project-ideation.md';
+  } else if (/recommend|suggest|which tool|compare|versus|vs|best for|what tool/.test(msg)) {
+    skillFile = 'tool-discovery.md';
+  } else if (/reflect|week|check.?in|how did|review|looking back/.test(msg)) {
+    skillFile = 'weekly-reflection.md';
+  }
+
+  if (!skillFile) return '';
+
+  try {
+    const filePath = path.join(process.cwd(), 'public', 'skills', skillFile);
+    const content = await fs.readFile(filePath, 'utf-8');
+    return `\n\nREFERENCE (use this to inform your response, don't quote it directly):\n${content}`;
+  } catch {
+    return '';
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,8 +46,11 @@ export async function POST(request: NextRequest) {
     }
 
     try {
+      // Load relevant skill reference based on message intent
+      const skillContext = await loadSkillContext(message);
+
       // Context rot prevention: summarize long conversations
-      let enrichedContext = context || '';
+      let enrichedContext = (context || '') + skillContext;
       if (conversationHistory && needsSummarization(conversationHistory)) {
         const summary = await summarizeConversation(conversationHistory.slice(0, -5));
         if (summary) {
