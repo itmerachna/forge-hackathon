@@ -80,12 +80,28 @@ export default function ProfileSetupPage() {
     setLoading(true);
 
     try {
+      // Check for duplicate username
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
+      const { data: existing } = await supabase
+        .from('users')
+        .select('id')
+        .eq('username', username.trim().toLowerCase())
+        .neq('id', user?.id || '')
+        .maybeSingle();
+
+      if (existing) {
+        setError('Username is already taken. Please choose another.');
+        setLoading(false);
+        return;
+      }
+
       let avatarUrl = profile?.avatar_url || '';
 
-      // Upload avatar if selected (using base64 for simplicity)
-      // In production, you'd upload to Supabase Storage
       if (avatarFile) {
-        // For now, store as data URL (works for hackathon, not ideal for production)
         avatarUrl = avatarPreview || '';
       }
 
@@ -102,10 +118,11 @@ export default function ProfileSetupPage() {
         return;
       }
 
-      // Go to onboarding
       router.push('/onboarding');
     } catch (err) {
+      console.error('[Forge Debug] Profile setup error:', err);
       setError('Something went wrong. Please try again.');
+    } finally {
       setLoading(false);
     }
   };
@@ -130,8 +147,8 @@ export default function ProfileSetupPage() {
 
       {/* Card */}
       <div className="w-full max-w-md bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-8">
-        <h1 className="text-2xl font-serif text-white mb-2">Set up your profile</h1>
-        <p className="text-magnolia/60 mb-8">Tell us a bit about yourself</p>
+        <h1 className="text-2xl font-serif text-white mb-2 text-center">Set up your profile</h1>
+        <p className="text-magnolia/60 mb-8 text-center">Tell us a bit about yourself</p>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {error && (

@@ -181,10 +181,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updateProfile = async (updates: Partial<User>) => {
     if (!supabase || !user) return { error: new Error('Not authenticated') };
 
+    // Use upsert so it works even if createProfile failed (e.g. RLS race condition)
     const { error } = await supabase
       .from('users')
-      .update({ ...updates, updated_at: new Date().toISOString() })
-      .eq('id', user.id);
+      .upsert({
+        id: user.id,
+        email: user.email || '',
+        ...updates,
+        updated_at: new Date().toISOString(),
+      });
 
     if (!error) {
       await refreshProfile();
