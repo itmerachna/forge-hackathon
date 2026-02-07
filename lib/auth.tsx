@@ -137,12 +137,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [supabase]);
 
   const signUp = async (email: string, password: string) => {
-    if (!supabase) return { error: new Error('Supabase not configured'), session: null };
+    if (!supabase) {
+      console.error('[Forge Debug] Supabase client is null!');
+      return { error: new Error('Supabase not configured'), session: null };
+    }
 
+    console.log('[Forge Debug] Supabase client exists, calling auth.signUp...');
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
     });
+    console.log('[Forge Debug] auth.signUp resolved:', { hasData: !!data, hasSession: !!data?.session, hasUser: !!data?.user, error: error?.message });
 
     return { error: error as Error | null, session: data?.session ?? null };
   };
