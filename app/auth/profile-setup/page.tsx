@@ -7,7 +7,7 @@ import { useAuth } from '../../../lib/auth';
 
 export default function ProfileSetupPage() {
   const router = useRouter();
-  const { user, profile, updateProfile, loading: authLoading } = useAuth();
+  const { user, profile, supabase, updateProfile, loading: authLoading } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState('');
@@ -80,23 +80,20 @@ export default function ProfileSetupPage() {
     setLoading(true);
 
     try {
-      // Check for duplicate username
-      const { createClient } = await import('@supabase/supabase-js');
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      );
-      const { data: existing } = await supabase
-        .from('users')
-        .select('id')
-        .eq('username', username.trim().toLowerCase())
-        .neq('id', user?.id || '')
-        .maybeSingle();
+      // Check for duplicate username using shared client from context
+      if (supabase) {
+        const { data: existing } = await supabase
+          .from('users')
+          .select('id')
+          .eq('username', username.trim().toLowerCase())
+          .neq('id', user?.id || '')
+          .maybeSingle();
 
-      if (existing) {
-        setError('Username is already taken. Please choose another.');
-        setLoading(false);
-        return;
+        if (existing) {
+          setError('Username is already taken. Please choose another.');
+          setLoading(false);
+          return;
+        }
       }
 
       let avatarUrl = profile?.avatar_url || '';
@@ -120,8 +117,12 @@ export default function ProfileSetupPage() {
 
       router.push('/onboarding');
     } catch (err) {
-      console.error('[Forge Debug] Profile setup error:', err);
-      setError('Something went wrong. Please try again.');
+      if (err instanceof Error && err.name === 'AbortError') {
+        // React StrictMode double-mount — retry once
+        setError('Request was interrupted. Please try again.');
+      } else {
+        setError('Something went wrong. Please try again.');
+      }
     } finally {
       setLoading(false);
     }

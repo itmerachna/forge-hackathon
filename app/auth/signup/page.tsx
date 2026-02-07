@@ -31,32 +31,29 @@ export default function SignUpPage() {
     }
 
     setLoading(true);
-    console.log('[Forge Debug] Starting signup for:', email);
 
     try {
-      console.log('[Forge Debug] Calling signUp...');
       const result = await signUp(email, password);
-      console.log('[Forge Debug] signUp returned:', JSON.stringify({ error: result.error?.message, hasSession: !!result.session }));
 
       if (result.error) {
-        console.log('[Forge Debug] SignUp error:', result.error.message);
         setError(result.error.message);
         setLoading(false);
         return;
       }
 
       if (!result.session) {
-        // No session + no error = email already exists (Supabase hides this for security)
         setError('This email is already registered. Please sign in instead.');
         setLoading(false);
         return;
       }
 
-      console.log('[Forge Debug] Session exists, redirecting to profile-setup');
       router.push('/auth/profile-setup');
     } catch (err) {
-      console.error('[Forge Debug] Caught exception:', err);
-      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+      if (err instanceof Error && err.name === 'AbortError') {
+        setError('Request was interrupted. Please try again.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+      }
       setLoading(false);
     }
   };
