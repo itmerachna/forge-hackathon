@@ -206,6 +206,7 @@ export default function Dashboard() {
           message: userMessage.content,
           conversationHistory: updatedMessages.slice(-20),
           userProfile: userProfile ? {
+            user_id: user?.id,
             focus: userProfile.focus,
             skill_level: userProfile.level,
             weekly_hours: userProfile.time,
@@ -319,7 +320,7 @@ export default function Dashboard() {
             {/* Accordion: vertically stacked headings that reveal details on click */}
             <div className="border border-white/10 rounded-xl overflow-hidden divide-y divide-white/[0.06]">
               {tools.map((tool, index) => (
-                <div key={tool.id}>
+                <div key={tool.id} className="animate-fade-in-up" style={{ animationDelay: `${index * 80}ms` }}>
                   <button
                     onClick={() => setExpandedTool(expandedTool === tool.id ? null : tool.id)}
                     className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.03] transition-all text-left"

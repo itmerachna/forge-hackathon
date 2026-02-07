@@ -2,7 +2,33 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateChatResponseStream, isGeminiConfigured } from '../../../lib/gemini';
 import { needsSummarization, summarizeConversation, buildContextFromSummaries } from '../../../lib/summarize';
 import { trackLLMCall } from '../../../lib/opik';
+import { promises as fs } from 'fs';
+import path from 'path';
 import type { ChatRequest } from '../../../types';
+
+// Load a skill file as additional context for Gemini
+async function loadSkillContext(message: string): Promise<string> {
+  const msg = message.toLowerCase();
+  let skillFile = '';
+
+  if (/project|idea|build|make|create|what (can|should) i/.test(msg)) {
+    skillFile = 'project-ideation.md';
+  } else if (/recommend|suggest|which tool|compare|versus|vs|best for|what tool/.test(msg)) {
+    skillFile = 'tool-discovery.md';
+  } else if (/reflect|week|check.?in|how did|review|looking back/.test(msg)) {
+    skillFile = 'weekly-reflection.md';
+  }
+
+  if (!skillFile) return '';
+
+  try {
+    const filePath = path.join(process.cwd(), 'public', 'skills', skillFile);
+    const content = await fs.readFile(filePath, 'utf-8');
+    return `\n\nREFERENCE (use this to inform your response, don't quote it directly):\n${content}`;
+  } catch {
+    return '';
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,14 +46,47 @@ export async function POST(request: NextRequest) {
     }
 
     try {
+      // Load relevant skill reference based on message intent
+      const skillContext = await loadSkillContext(message);
+
+      // End-of-week reflection nudge (Thu-Sun)
+      const dayOfWeek = new Date().getDay();
+      const isEndOfWeek = dayOfWeek === 0 || dayOfWeek >= 4;
+      const reflectionNudge = isEndOfWeek ? '\n\nNOTE: It\'s near the end of the week. If the conversation naturally allows it, gently remind the user they can do their weekly reflection in the Tracker page. Don\'t force it — only mention if it fits the flow.' : '';
+
       // Context rot prevention: summarize long conversations
-      let enrichedContext = context || '';
+      let enrichedContext = (context || '') + skillContext + reflectionNudge;
       if (conversationHistory && needsSummarization(conversationHistory)) {
         const summary = await summarizeConversation(conversationHistory.slice(0, -5));
         if (summary) {
           enrichedContext = buildContextFromSummaries([summary]) + (enrichedContext ? '\n\n' + enrichedContext : '');
+
+          // Persist summary to Supabase
+          try {
+            const baseUrl = request.nextUrl.origin;
+            await fetch(`${baseUrl}/api/memories`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                user_id: userProfile?.user_id || 'anonymous',
+                action: 'summarize',
+                messages: conversationHistory.slice(0, -5),
+              }),
+            });
+          } catch {
+            // Silent fail — persistence is best-effort
+          }
         }
       }
+
+      // Track chat call in Opik
+      trackLLMCall({
+        name: 'chat-stream',
+        input: { message, hasHistory: (conversationHistory?.length || 0) > 0 },
+        output: '[streaming]',
+        model: 'gemini-2.5-flash-lite',
+        tags: ['chat', 'streaming'],
+      }).catch(() => {});
 
       const stream = await generateChatResponseStream(
         message,
