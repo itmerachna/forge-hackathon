@@ -31,25 +31,30 @@ export default function SignUpPage() {
     }
 
     setLoading(true);
+    console.log('[Forge Debug] Starting signup for:', email);
 
     try {
-      const { error, session } = await signUp(email, password);
+      console.log('[Forge Debug] Calling signUp...');
+      const result = await signUp(email, password);
+      console.log('[Forge Debug] signUp returned:', JSON.stringify({ error: result.error?.message, hasSession: !!result.session }));
 
-      if (error) {
-        setError(error.message);
+      if (result.error) {
+        console.log('[Forge Debug] SignUp error:', result.error.message);
+        setError(result.error.message);
         setLoading(false);
         return;
       }
 
-      if (session) {
-        // Email confirmation disabled — user is signed in, go to profile setup
+      if (result.session) {
+        console.log('[Forge Debug] Session exists, redirecting to profile-setup');
         router.push('/auth/profile-setup');
       } else {
-        // Email confirmation enabled — tell user to check inbox
+        console.log('[Forge Debug] No session returned — showing confirmation screen');
         setConfirmationSent(true);
         setLoading(false);
       }
     } catch (err) {
+      console.error('[Forge Debug] Caught exception:', err);
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
       setLoading(false);
     }
