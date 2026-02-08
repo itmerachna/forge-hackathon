@@ -307,9 +307,11 @@ async function fetchRedditTools(): Promise<DiscoveredTool[]> {
 }
 
 // DevHunt - developer tool launches (uses /api/past-week-tools, no auth required)
+// Response format: array of week objects, each with a `products` array
+// Product fields: id, email, name, description, logo_url, data_added, launch_date, votes_count, devhunt_link, link
 async function fetchDevHuntTools(): Promise<DiscoveredTool[]> {
   try {
-    const response = await fetchWithTimeout('https://devhunt.org/api/past-week-tools?limit=20');
+    const response = await fetchWithTimeout('https://devhunt.org/api/past-week-tools?limit=3');
 
     if (!response.ok) {
       console.error('DevHunt API error:', response.status);
@@ -317,9 +319,16 @@ async function fetchDevHuntTools(): Promise<DiscoveredTool[]> {
     }
 
     const data = await response.json();
-    const tools = Array.isArray(data) ? data : data?.tools || data?.data || [];
 
-    return tools
+    // Response is an array of week objects, each with a products array
+    const weeks = Array.isArray(data) ? data : [];
+    const allProducts: DevHuntTool[] = [];
+    for (const week of weeks) {
+      const products = week.products || [];
+      allProducts.push(...products);
+    }
+
+    return allProducts
       .filter((tool: DevHuntTool) => {
         const text = `${tool.name || ''} ${tool.description || ''}`.toLowerCase();
         return text.includes('ai') || text.includes('design') || text.includes('creative') ||
@@ -331,7 +340,7 @@ async function fetchDevHuntTools(): Promise<DiscoveredTool[]> {
         description: tool.description || '',
         website: tool.link || tool.devhunt_link || '',
         source: 'devhunt' as const,
-        votes: tool.votes_count || 0,
+        votes: typeof tool.votes_count === 'number' ? tool.votes_count : 0,
         topics: [],
       }));
   } catch (error) {
