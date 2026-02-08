@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { Opik } from 'opik';
 import { trackGemini } from 'opik-gemini';
 import type { ChatMessage, UserPreferences } from '../types';
 
@@ -11,8 +12,13 @@ function getAI(): GoogleGenAI {
     const raw = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
     // Wrap with Opik tracking if OPIK_API_KEY is set
+    // Pass our own Opik client with projectName so traces go to the right project
     if (process.env.OPIK_API_KEY) {
-      _ai = trackGemini(raw, { projectName: 'forge-ai-coach' });
+      const opikClient = new Opik({
+        apiKey: process.env.OPIK_API_KEY,
+        projectName: 'forge-ai-coach',
+      });
+      _ai = trackGemini(raw, { client: opikClient });
     } else {
       _ai = raw;
     }
