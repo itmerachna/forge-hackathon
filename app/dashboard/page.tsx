@@ -8,6 +8,8 @@ import {
   PaperPlaneRight,
   Globe,
   XLogo,
+  ThumbsUp,
+  ThumbsDown,
 } from '@phosphor-icons/react';
 import ReactMarkdown from 'react-markdown';
 import Sidebar from '../components/Sidebar';
@@ -28,6 +30,26 @@ export default function Dashboard() {
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const sessionIdRef = useRef<string>(generateId());
+  const [feedbackGiven, setFeedbackGiven] = useState<Record<string, number>>({});
+
+  const handleFeedback = async (messageId: string, score: number, content: string) => {
+    setFeedbackGiven(prev => ({ ...prev, [messageId]: score }));
+    try {
+      await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionIdRef.current,
+          message_id: messageId,
+          score,
+          message_content: content,
+        }),
+      });
+    } catch {
+      // Silent fail — feedback is best-effort
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -215,6 +237,7 @@ export default function Dashboard() {
             goal: userProfile.goal,
           } : undefined,
           context: tools.length > 0 ? `This week's tools (${tools.length} active, ${stashedTools.length} stashed): ${tools.map(t => `${t.name} (${t.category}, ${t.pricing || 'Unknown pricing'}${triedTools.includes(t.id) ? ', already tried' : ''})`).join(', ')}` : undefined,
+          session_id: sessionIdRef.current,
         }),
         signal: abortControllerRef.current.signal,
       });
@@ -395,9 +418,29 @@ export default function Dashboard() {
                       <div className="w-7 h-7 rounded-full bg-chartreuse/20 text-chartreuse flex items-center justify-center shrink-0 mt-1">
                         <Sparkle size={14} weight="fill" />
                       </div>
-                      <div className="bg-white/[0.06] p-4 rounded-2xl rounded-tl-none text-white leading-relaxed prose prose-invert prose-sm max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-strong:text-white prose-a:text-phoenix">
-                        <ReactMarkdown>{message.content}</ReactMarkdown>
-                        {message.isStreaming && <span className="inline-block w-1.5 h-4 bg-chartreuse ml-1 animate-pulse" />}
+                      <div>
+                        <div className="bg-white/[0.06] p-4 rounded-2xl rounded-tl-none text-white leading-relaxed prose prose-invert prose-sm max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0 prose-strong:text-white prose-a:text-phoenix">
+                          <ReactMarkdown>{message.content}</ReactMarkdown>
+                          {message.isStreaming && <span className="inline-block w-1.5 h-4 bg-chartreuse ml-1 animate-pulse" />}
+                        </div>
+                        {!message.isStreaming && message.content && (
+                          <div className="flex gap-1 mt-1 ml-1">
+                            <button
+                              onClick={() => handleFeedback(message.id, 1, message.content)}
+                              className={`p-1 rounded transition-colors ${feedbackGiven[message.id] === 1 ? 'text-chartreuse' : 'text-white/20 hover:text-white/50'}`}
+                              title="Helpful"
+                            >
+                              <ThumbsUp size={14} weight={feedbackGiven[message.id] === 1 ? 'fill' : 'regular'} />
+                            </button>
+                            <button
+                              onClick={() => handleFeedback(message.id, -1, message.content)}
+                              className={`p-1 rounded transition-colors ${feedbackGiven[message.id] === -1 ? 'text-phoenix' : 'text-white/20 hover:text-white/50'}`}
+                              title="Not helpful"
+                            >
+                              <ThumbsDown size={14} weight={feedbackGiven[message.id] === -1 ? 'fill' : 'regular'} />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ) : (

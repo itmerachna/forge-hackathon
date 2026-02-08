@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateChatResponseStream, isGeminiConfigured } from '../../../lib/gemini';
+import { getOpikClient } from '../../../lib/opik';
 import { needsSummarization, summarizeConversation, buildContextFromSummaries } from '../../../lib/summarize';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -32,7 +33,7 @@ async function loadSkillContext(message: string): Promise<string> {
 export async function POST(request: NextRequest) {
   try {
     const body: ChatRequest = await request.json();
-    const { message, conversationHistory, userProfile, context } = body;
+    const { message, conversationHistory, userProfile, context, session_id } = body;
 
     if (!message?.trim()) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
@@ -45,18 +46,53 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      // Load relevant skill reference based on message intent
+      // Create parent trace for the entire chat request
+      const opik = getOpikClient();
+      const userId = userProfile?.user_id || 'anonymous';
+      const turnCount = (conversationHistory || []).filter(m => m.role === 'user').length + 1;
+      const trace = opik && session_id ? opik.trace({
+        name: 'chat',
+        threadId: session_id,
+        input: { message, user_id: userId, turn: turnCount },
+        metadata: {
+          user_focus: userProfile?.focus || 'unknown',
+          user_level: userProfile?.skill_level || 'unknown',
+        },
+        tags: ['chat', userProfile?.focus || 'no-focus'].filter(Boolean),
+      }) : null;
+
+      // Span: Load relevant skill reference based on message intent
+      const skillSpanStart = Date.now();
       const skillContext = await loadSkillContext(message);
+      if (trace) {
+        trace.span({
+          name: 'load-skill-context',
+          type: 'tool',
+          input: { message_intent: message.slice(0, 100) },
+          output: { loaded: Boolean(skillContext), length: skillContext.length },
+          metadata: { duration_ms: Date.now() - skillSpanStart },
+        });
+      }
 
       // End-of-week reflection nudge (Thu-Sun)
       const dayOfWeek = new Date().getDay();
       const isEndOfWeek = dayOfWeek === 0 || dayOfWeek >= 4;
       const reflectionNudge = isEndOfWeek ? '\n\nNOTE: It\'s near the end of the week. If the conversation naturally allows it, gently remind the user they can do their weekly reflection in the Tracker page. Don\'t force it — only mention if it fits the flow.' : '';
 
-      // Context rot prevention: summarize long conversations
+      // Span: Context rot prevention — summarize long conversations
       let enrichedContext = (context || '') + skillContext + reflectionNudge;
       if (conversationHistory && needsSummarization(conversationHistory)) {
+        const summarizeStart = Date.now();
         const summary = await summarizeConversation(conversationHistory.slice(0, -5));
+        if (trace) {
+          trace.span({
+            name: 'summarize-conversation',
+            type: 'llm',
+            input: { message_count: conversationHistory.length },
+            output: { summarized: Boolean(summary) },
+            metadata: { duration_ms: Date.now() - summarizeStart },
+          });
+        }
         if (summary) {
           enrichedContext = buildContextFromSummaries([summary]) + (enrichedContext ? '\n\n' + enrichedContext : '');
 
@@ -84,6 +120,13 @@ export async function POST(request: NextRequest) {
         userProfile,
         enrichedContext || context,
       );
+
+      // Update trace output
+      if (trace) {
+        trace.update({
+          output: { streaming: true, has_skill_context: Boolean(skillContext), has_enriched_context: Boolean(enrichedContext) },
+        });
+      }
 
       return new Response(stream, {
         headers: {

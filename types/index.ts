@@ -99,6 +99,7 @@ export interface ChatRequest {
   conversationHistory: ChatMessage[];
   userProfile?: UserPreferences;
   context?: string;
+  session_id?: string;
 }
 
 export interface ChatResponse {

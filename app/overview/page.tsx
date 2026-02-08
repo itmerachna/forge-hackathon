@@ -7,6 +7,8 @@ import {
   Code,
   Target,
   Lightning,
+  ThumbsUp,
+  ThumbsDown,
 } from '@phosphor-icons/react';
 import ReactMarkdown from 'react-markdown';
 import Sidebar from '../components/Sidebar';
@@ -21,6 +23,26 @@ export default function Overview() {
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const sessionIdRef = useRef<string>(generateId());
+  const [feedbackGiven, setFeedbackGiven] = useState<Record<string, number>>({});
+
+  const handleFeedback = async (messageId: string, score: number, content: string) => {
+    setFeedbackGiven(prev => ({ ...prev, [messageId]: score }));
+    try {
+      await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionIdRef.current,
+          message_id: messageId,
+          score,
+          message_content: content,
+        }),
+      });
+    } catch {
+      // Silent fail
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -100,6 +122,7 @@ export default function Overview() {
             goal: userProfile.goal,
           } : undefined,
           context: 'This is the overview/reflection space. Help the user reflect on progress, plan projects, and explore tools in depth.',
+          session_id: sessionIdRef.current,
         }),
         signal: abortControllerRef.current.signal,
       });
@@ -247,6 +270,24 @@ export default function Overview() {
                             <span className="inline-block w-1.5 h-4 bg-royal ml-1 animate-pulse" />
                           )}
                         </div>
+                        {!message.isStreaming && message.content && (
+                          <div className="flex gap-1 ml-1">
+                            <button
+                              onClick={() => handleFeedback(message.id, 1, message.content)}
+                              className={`p-1 rounded transition-colors ${feedbackGiven[message.id] === 1 ? 'text-chartreuse' : 'text-gray-300 hover:text-gray-500'}`}
+                              title="Helpful"
+                            >
+                              <ThumbsUp size={14} weight={feedbackGiven[message.id] === 1 ? 'fill' : 'regular'} />
+                            </button>
+                            <button
+                              onClick={() => handleFeedback(message.id, -1, message.content)}
+                              className={`p-1 rounded transition-colors ${feedbackGiven[message.id] === -1 ? 'text-phoenix' : 'text-gray-300 hover:text-gray-500'}`}
+                              title="Not helpful"
+                            >
+                              <ThumbsDown size={14} weight={feedbackGiven[message.id] === -1 ? 'fill' : 'regular'} />
+                            </button>
+                          </div>
+                        )}
                         {message.suggestions && (
                           <div className="flex gap-2 mt-2">
                             {message.suggestions.map((suggestion) => (

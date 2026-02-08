@@ -1,8 +1,85 @@
 import { NextResponse } from 'next/server';
 import { isGeminiConfigured, getGeminiClient } from '../../../lib/gemini';
 import { getOpikClient } from '../../../lib/opik';
+import { supabase, isSupabaseConfigured } from '../../../lib/supabase';
+import { Opik } from 'opik';
 
-// 30 test cases covering various scenarios
+// Delay helper for rate limit avoidance
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Retry with exponential backoff on 429 errors
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const is429 = error instanceof Error && (
+        error.message.includes('429') ||
+        error.message.includes('RESOURCE_EXHAUSTED') ||
+        error.message.includes('rate')
+      );
+      if (is429 && attempt < maxRetries) {
+        const backoff = Math.pow(2, attempt + 1) * 1000; // 2s, 4s, 8s
+        await delay(backoff);
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error('Retry exhausted');
+}
+
+// Load real tools from Supabase (or fallback) for grounded evaluation
+async function loadToolCatalog(): Promise<string> {
+  const fallbackTools = [
+    { name: 'AKOOL', category: 'AI Video Editor', pricing: 'Freemium', difficulty: 'Beginner', description: 'AI Video Creation – Avatars, Translation, Face Swap' },
+    { name: 'PixAI', category: 'AI Design', pricing: 'Paid ($9.99/mo+)', difficulty: 'Beginner', description: 'Anime & Character Generation AI' },
+    { name: 'RecCloud', category: 'AI Audio', pricing: 'Freemium', difficulty: 'Beginner', description: 'AI Audio & Video Processing' },
+    { name: 'KREA AI', category: 'AI Design', pricing: 'Freemium', difficulty: 'Intermediate', description: 'AI Creative Suite for Images, Video & 3D' },
+    { name: 'Gamma', category: 'AI Design', pricing: 'Freemium', difficulty: 'Beginner', description: 'AI design for presentations, websites, and more' },
+    { name: 'Anything', category: 'Vibe Coding', pricing: 'Freemium', difficulty: 'Intermediate', description: 'Turn words into apps, sites, tools' },
+    { name: 'Relume', category: 'AI Site Builder', pricing: 'Freemium', difficulty: 'Beginner', description: 'Websites designed and built faster with AI' },
+    { name: 'Descript', category: 'AI Video Editor', pricing: 'Paid ($24/mo+)', difficulty: 'Intermediate', description: 'AI video editing with transcription and voice cloning' },
+    { name: 'PicWish', category: 'AI Photo Editor', pricing: 'Freemium', difficulty: 'Beginner', description: 'All-in-one free AI photo editor' },
+    { name: 'Luma AI', category: 'AI Design', pricing: 'Freemium', difficulty: 'Intermediate', description: 'Images and videos with precision, speed, control' },
+    { name: 'Midjourney', category: 'AI Design', pricing: 'Paid ($10/mo+)', difficulty: 'Intermediate', description: 'AI image generation via Discord' },
+    { name: 'Runway', category: 'AI Video Editor', pricing: 'Freemium', difficulty: 'Intermediate', description: 'AI video generation and editing suite' },
+    { name: 'Figma', category: 'AI Design', pricing: 'Freemium', difficulty: 'Intermediate', description: 'Collaborative design tool with AI features' },
+    { name: 'Cursor', category: 'Vibe Coding', pricing: 'Freemium', difficulty: 'Intermediate', description: 'AI-powered code editor' },
+    { name: 'v0', category: 'Vibe Coding', pricing: 'Freemium', difficulty: 'Beginner', description: 'AI UI component generator by Vercel' },
+    { name: 'Bolt', category: 'Vibe Coding', pricing: 'Freemium', difficulty: 'Beginner', description: 'AI full-stack app builder in the browser' },
+    { name: 'Lovable', category: 'Vibe Coding', pricing: 'Freemium', difficulty: 'Beginner', description: 'AI app builder for non-coders' },
+    { name: 'Webflow', category: 'AI Site Builder', pricing: 'Freemium', difficulty: 'Intermediate', description: 'Visual web design with AI features' },
+    { name: 'Framer', category: 'AI Site Builder', pricing: 'Freemium', difficulty: 'Intermediate', description: 'AI-powered website builder' },
+    { name: 'Canva', category: 'AI Design', pricing: 'Freemium', difficulty: 'Beginner', description: 'Easy graphic design with AI tools' },
+    { name: 'DALL-E', category: 'AI Design', pricing: 'Paid', difficulty: 'Beginner', description: 'AI image generation by OpenAI' },
+    { name: 'ElevenLabs', category: 'AI Audio', pricing: 'Freemium', difficulty: 'Beginner', description: 'AI voice cloning and text-to-speech' },
+    { name: 'Suno', category: 'AI Audio', pricing: 'Freemium', difficulty: 'Beginner', description: 'AI music generation' },
+    { name: 'Udio', category: 'AI Audio', pricing: 'Freemium', difficulty: 'Beginner', description: 'AI music creation platform' },
+    { name: 'Claude', category: 'AI Writing', pricing: 'Freemium', difficulty: 'Beginner', description: 'AI assistant for writing and coding' },
+    { name: 'Notion AI', category: 'AI Productivity', pricing: 'Paid ($10/mo+)', difficulty: 'Beginner', description: 'AI-powered workspace and notes' },
+    { name: 'GitHub Copilot', category: 'Vibe Coding', pricing: 'Paid ($10/mo+)', difficulty: 'Intermediate', description: 'AI code completion in VS Code' },
+    { name: 'Spline', category: 'AI Design', pricing: 'Freemium', difficulty: 'Intermediate', description: '3D design tool with AI features' },
+    { name: 'Rive', category: 'AI Design', pricing: 'Freemium', difficulty: 'Advanced', description: 'Interactive animations for apps and games' },
+    { name: 'Vercel', category: 'Vibe Coding', pricing: 'Freemium', difficulty: 'Intermediate', description: 'AI-powered deployment and hosting' },
+  ];
+
+  // Try to load from Supabase first
+  if (isSupabaseConfigured()) {
+    try {
+      const { data: tools } = await supabase.from('tools').select('name, category, pricing, difficulty, description').order('id', { ascending: true });
+      if (tools && tools.length > 0) {
+        return tools.map(t => `- ${t.name} (${t.category}, ${t.pricing}, ${t.difficulty}): ${t.description}`).join('\n');
+      }
+    } catch {
+      // Fall through to fallback
+    }
+  }
+
+  return fallbackTools.map(t => `- ${t.name} (${t.category}, ${t.pricing}, ${t.difficulty}): ${t.description}`).join('\n');
+}
+
+// 45 test cases covering various scenarios
 const TEST_CASES = [
   // Free-only user preferences (1-5)
   {
@@ -200,6 +277,102 @@ const TEST_CASES = [
     userProfile: { focus: 'Web Design', skill_level: 'Beginner', preferences: '', existing_tools: '', goal: 'Aprender herramientas de IA' },
     expectedTraits: { should_handle_gracefully: true },
   },
+
+  // Cross-category and specific workflow tests (31-37)
+  {
+    id: 31,
+    name: 'workflow-video-to-social',
+    userProfile: { focus: 'UI/UX Design', skill_level: 'Intermediate', preferences: 'Tools that work together', existing_tools: 'Canva', goal: 'Create short-form video content for social media' },
+    expectedTraits: { category_match: 'video', skill_level: 'Intermediate' },
+  },
+  {
+    id: 32,
+    name: 'workflow-design-to-code',
+    userProfile: { focus: 'Frontend Development', skill_level: 'Intermediate', preferences: '', existing_tools: 'Figma', goal: 'Go from design to code faster' },
+    expectedTraits: { skill_level: 'Intermediate', category_match: 'coding' },
+  },
+  {
+    id: 33,
+    name: 'workflow-audio-podcast',
+    userProfile: { focus: 'No-Code Tools', skill_level: 'Beginner', preferences: 'Free or cheap', existing_tools: 'Canva', goal: 'Launch a podcast with AI-generated music and editing' },
+    expectedTraits: { must_be_free: true, category_match: 'audio' },
+  },
+  {
+    id: 34,
+    name: 'premium-user-wants-best',
+    userProfile: { focus: 'UI/UX Design', skill_level: 'Advanced', preferences: 'Price doesnt matter, I want the absolute best', existing_tools: 'Figma, Sketch', goal: 'Use the most powerful AI tools available' },
+    expectedTraits: { skill_level: 'Advanced', should_include_advanced: true },
+  },
+  {
+    id: 35,
+    name: 'student-budget-creative',
+    userProfile: { focus: 'Web Design', skill_level: 'Beginner', preferences: 'Student budget, need free tiers', existing_tools: 'Canva free', goal: 'Build a portfolio for job applications' },
+    expectedTraits: { must_be_free: true, skill_level: 'Beginner' },
+  },
+  {
+    id: 36,
+    name: 'team-collaboration-focus',
+    userProfile: { focus: 'UI/UX Design', skill_level: 'Intermediate', preferences: 'Must support real-time collaboration', existing_tools: 'Figma', goal: 'Find AI tools my team can use together' },
+    expectedTraits: { skill_level: 'Intermediate' },
+  },
+  {
+    id: 37,
+    name: 'mobile-first-creator',
+    userProfile: { focus: 'No-Code Tools', skill_level: 'Beginner', preferences: 'Must have mobile app', existing_tools: 'None', goal: 'Create content from my phone' },
+    expectedTraits: { skill_level: 'Beginner' },
+  },
+
+  // Time-constrained and productivity tests (38-41)
+  {
+    id: 38,
+    name: 'time-30min-per-week',
+    userProfile: { focus: 'Web Design', skill_level: 'Beginner', weekly_hours: '30 minutes', preferences: '', existing_tools: 'None', goal: 'Learn one tool really well' },
+    expectedTraits: { limited_time: true, should_focus: true, skill_level: 'Beginner' },
+  },
+  {
+    id: 39,
+    name: 'time-20hrs-deep-dive',
+    userProfile: { focus: 'Frontend Development', skill_level: 'Advanced', weekly_hours: '20+ hours', preferences: '', existing_tools: 'VS Code, Cursor', goal: 'Deep dive into every vibe coding tool' },
+    expectedTraits: { skill_level: 'Advanced' },
+  },
+  {
+    id: 40,
+    name: 'productivity-automate-workflow',
+    userProfile: { focus: 'No-Code Tools', skill_level: 'Intermediate', preferences: 'Automation and productivity', existing_tools: 'Notion, Zapier', goal: 'Automate my design-to-publish workflow' },
+    expectedTraits: { skill_level: 'Intermediate' },
+  },
+  {
+    id: 41,
+    name: 'freelancer-client-work',
+    userProfile: { focus: 'Web Design', skill_level: 'Intermediate', preferences: 'Professional output quality', existing_tools: 'Figma, Webflow', goal: 'Speed up client website delivery' },
+    expectedTraits: { skill_level: 'Intermediate', should_not_suggest_known: true },
+  },
+
+  // Specific category deep-dives (42-45)
+  {
+    id: 42,
+    name: 'photo-editing-specialist',
+    userProfile: { focus: 'UI/UX Design', skill_level: 'Intermediate', preferences: 'Photo editing specifically', existing_tools: 'Photoshop', goal: 'Replace Photoshop with AI alternatives' },
+    expectedTraits: { skill_level: 'Intermediate', category_match: 'photo' },
+  },
+  {
+    id: 43,
+    name: 'writing-content-creator',
+    userProfile: { focus: 'Web Design', skill_level: 'Beginner', preferences: '', existing_tools: 'None', goal: 'Write blog posts and social media content with AI' },
+    expectedTraits: { skill_level: 'Beginner', category_match: 'writing' },
+  },
+  {
+    id: 44,
+    name: 'site-builder-no-code',
+    userProfile: { focus: 'No-Code Tools', skill_level: 'Beginner', preferences: 'Zero coding required', existing_tools: 'None', goal: 'Build a landing page without writing code' },
+    expectedTraits: { skill_level: 'Beginner', category_match: 'site' },
+  },
+  {
+    id: 45,
+    name: 'multi-tool-comparison',
+    userProfile: { focus: 'Frontend Development', skill_level: 'Intermediate', preferences: 'Want to compare options', existing_tools: 'Cursor', goal: 'Find the best vibe coding tool - compare Bolt, v0, and Lovable' },
+    expectedTraits: { skill_level: 'Intermediate', should_not_suggest_known: true },
+  },
 ];
 
 // Score a single test case result
@@ -273,7 +446,7 @@ function scoreResult(
 }
 
 // Run evaluation for a single test case
-async function evaluateTestCase(testCase: typeof TEST_CASES[0]): Promise<{
+async function evaluateTestCase(testCase: typeof TEST_CASES[0], toolCatalog: string): Promise<{
   id: number;
   name: string;
   passed: boolean;
@@ -290,7 +463,12 @@ async function evaluateTestCase(testCase: typeof TEST_CASES[0]): Promise<{
   try {
     const ai = getGeminiClient();
 
-    const prompt = `You are Forge, an AI learning coach. Based on this user's profile, recommend 5 AI tools.
+    const prompt = `You are Forge, an AI learning coach for design & vibe coding tools. Based on this user's profile, recommend exactly 5 AI tools from the catalog below.
+
+IMPORTANT: You MUST only recommend tools from this catalog. Do NOT make up tools.
+
+TOOL CATALOG:
+${toolCatalog}
 
 User Profile:
 - Focus: ${testCase.userProfile.focus || 'Not specified'}
@@ -300,15 +478,15 @@ User Profile:
 - Goal: ${testCase.userProfile.goal || 'Not specified'}
 ${testCase.context ? `\nContext: Tools tried: ${testCase.context.tools_tried}, Day of week: ${testCase.context.week_day}` : ''}
 
-For each tool, provide: name, category, difficulty level, pricing (Free/Freemium/Paid), and a one-line reason why it fits this user.
+Pick the 5 most relevant tools for this user. Match their skill level, respect their pricing preferences, and avoid tools they already use.
 
-Respond ONLY with a JSON array:
+Respond ONLY with a JSON array (no markdown, no explanation):
 [{"name":"...", "category":"...", "difficulty":"...", "pricing":"...", "reason":"..."}]`;
 
-    const result = await ai.models.generateContent({
+    const result = await withRetry(() => ai.models.generateContent({
       model: 'gemini-2.5-flash-lite',
       contents: prompt,
-    });
+    }));
     const responseText = result.text || '';
 
     // Parse response
@@ -432,24 +610,94 @@ Respond ONLY with a JSON array:
   }
 }
 
-// GET: Run all test cases
+// Seed the Opik dataset with test cases (idempotent — only creates if needed)
+async function seedOpikDataset(opik: Opik) {
+  const dataset = await opik.getOrCreateDataset(
+    'forge-eval-suite',
+    '45 test cases for Forge AI coach recommendation quality'
+  );
+
+  // Insert all test cases as dataset items
+  const items = TEST_CASES.map(tc => ({
+    input: {
+      userProfile: tc.userProfile,
+      context: tc.context || null,
+    },
+    expected_output: {
+      expectedTraits: tc.expectedTraits,
+    },
+    metadata: {
+      test_id: tc.id,
+      test_name: tc.name,
+      category: tc.name.split('-')[0],
+    },
+  }));
+
+  await dataset.insert(items);
+  return dataset;
+}
+
+// GET: Run all test cases as an Opik experiment
 export async function GET() {
   const results = [];
   let totalScore = 0;
   let passedCount = 0;
 
-  // Run test cases sequentially to avoid rate limits
-  for (const testCase of TEST_CASES) {
-    const result = await evaluateTestCase(testCase);
+  const opik = getOpikClient();
+
+  // Seed the Opik dataset (idempotent)
+  let datasetName: string | undefined;
+  if (opik) {
+    try {
+      const dataset = await seedOpikDataset(opik);
+      datasetName = dataset.name;
+    } catch (error) {
+      console.error('Failed to seed Opik dataset:', error);
+    }
+  }
+
+  // Create a named experiment for this run
+  const runTimestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const experimentName = `forge-eval-${runTimestamp}`;
+  let experimentId: string | undefined;
+
+  if (opik && datasetName) {
+    try {
+      const experiment = await opik.createExperiment({
+        datasetName,
+        name: experimentName,
+        experimentConfig: {
+          model: 'gemini-2.5-flash-lite',
+          pass_threshold: 60,
+          grounded_in_catalog: true,
+        },
+      });
+      experimentId = experiment.id;
+    } catch (error) {
+      console.error('Failed to create Opik experiment:', error);
+    }
+  }
+
+  // Load tool catalog once for all test cases (grounds responses in real tools)
+  const toolCatalog = await loadToolCatalog();
+
+  // Run test cases sequentially with delays to avoid Gemini rate limits
+  for (let i = 0; i < TEST_CASES.length; i++) {
+    const testCase = TEST_CASES[i];
+    const result = await evaluateTestCase(testCase, toolCatalog);
     results.push(result);
     totalScore += result.score;
     if (result.passed) passedCount++;
+
+    // 1.5s delay between requests to stay under Gemini rate limits
+    if (i < TEST_CASES.length - 1) {
+      await delay(1500);
+    }
   }
 
   const avgScore = Math.round(totalScore / TEST_CASES.length);
 
   // Flush Opik to ensure all traces/scores are sent
-  const opik = getOpikClient();
   if (opik) {
     await opik.flush();
   }
@@ -462,6 +710,7 @@ export async function GET() {
       average_score: avgScore,
       pass_rate: `${Math.round((passedCount / TEST_CASES.length) * 100)}%`,
     },
+    experiment: experimentId ? { id: experimentId, name: experimentName, dataset: datasetName } : undefined,
     results,
   });
 }
