@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase, isSupabaseConfigured } from '../../../lib/supabase';
 import { isGeminiConfigured, getGeminiClient } from '../../../lib/gemini';
+import { getOpikClient } from '../../../lib/opik';
 
 interface ReflectionInput {
   user_id: string;
@@ -18,6 +19,13 @@ export async function POST(request: NextRequest) {
     const body: ReflectionInput = await request.json();
 
     // Generate AI insights from reflection
+    const opik = getOpikClient();
+    const trace = opik ? opik.trace({
+      name: 'reflection',
+      input: { user_id: body.user_id, enjoyed_most: body.enjoyed_most, next_week_focus: body.next_week_focus, tools_mastered_count: body.tools_mastered.length },
+      tags: ['reflection'],
+    }) : null;
+
     let aiInsights = '';
     if (isGeminiConfigured()) {
       try {
@@ -35,15 +43,31 @@ Reflection:
 
 Provide personalized insights about their learning patterns and suggestions for next week.`;
 
+        const insightStart = Date.now();
         const result = await ai.models.generateContent({
           model: 'gemini-2.5-flash-lite',
           contents: prompt,
         });
         aiInsights = result.text || '';
+        if (trace) {
+          trace.span({
+            name: 'generate-insights',
+            type: 'llm',
+            input: { reflection_summary: `${body.enjoyed_most}, ${body.hardest_tool}` },
+            output: { insights_length: aiInsights.length },
+            metadata: { duration_ms: Date.now() - insightStart },
+          });
+        }
       } catch (error) {
         console.error('AI insights error:', error);
         aiInsights = 'Great job reflecting on your week! Keep exploring and building.';
       }
+    }
+
+    if (trace) {
+      trace.update({
+        output: { goals_met: body.tools_mastered.length >= 3, insights_generated: Boolean(aiInsights) },
+      });
     }
 
     // Save to Supabase

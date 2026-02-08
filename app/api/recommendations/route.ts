@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase, isSupabaseConfigured } from '../../../lib/supabase';
 import { isGeminiConfigured, getGeminiClient } from '../../../lib/gemini';
+import { getOpikClient } from '../../../lib/opik';
 import { generateWithCritique } from '../../../lib/critique';
 
 export async function GET(request: NextRequest) {
@@ -58,6 +59,13 @@ export async function GET(request: NextRequest) {
 
     // Use Gemini to rank tools if available
     if (isGeminiConfigured() && userPrefs) {
+      const opik = getOpikClient();
+      const trace = opik ? opik.trace({
+        name: 'recommendations',
+        input: { user_id: userId, focus: userPrefs.focus, skill_level: userPrefs.skill_level, tool_count: availableTools.length },
+        tags: ['recommendations'],
+      }) : null;
+
       try {
         const ai = getGeminiClient();
 
@@ -77,11 +85,22 @@ ${availableTools.map((t, i) => `${i + 1}. ${t.name} (${t.category}) - ${t.descri
 Return ONLY a JSON array of tool IDs in order of relevance (most relevant first), max 10 tools:
 [1, 5, 3, ...]`;
 
+        // Span: Initial Gemini ranking
+        const rankStart = Date.now();
         const result = await ai.models.generateContent({
           model: 'gemini-2.5-flash-lite',
           contents: prompt,
         });
         const text = result.text || '';
+        if (trace) {
+          trace.span({
+            name: 'gemini-rank',
+            type: 'llm',
+            input: { prompt_length: prompt.length, tool_count: availableTools.length },
+            output: { response_length: text.length },
+            metadata: { duration_ms: Date.now() - rankStart },
+          });
+        }
 
         // Parse the JSON array from response
         const match = text.match(/\[[\d,\s]+\]/);
@@ -92,7 +111,8 @@ Return ONLY a JSON array of tool IDs in order of relevance (most relevant first)
             .filter(Boolean)
             .slice(0, 10);
 
-          // Self-critique loop: validate recommendations
+          // Span: Self-critique loop
+          const critiqueStart = Date.now();
           const { recommendations: critiqued, critique, attempts } = await generateWithCritique(
             rankedTools.length > 0 ? rankedTools : availableTools.slice(0, 10),
             {
@@ -104,6 +124,18 @@ Return ONLY a JSON array of tool IDs in order of relevance (most relevant first)
               goal: userPrefs.goal,
             },
           );
+          if (trace) {
+            trace.span({
+              name: 'self-critique',
+              type: 'llm',
+              input: { tool_count: rankedTools.length },
+              output: { score: critique.score, passed: critique.passed, attempts },
+              metadata: { duration_ms: Date.now() - critiqueStart },
+            });
+            trace.update({
+              output: { source: 'gemini_ranked_with_critique', tool_count: critiqued.length, critique_score: critique.score, attempts },
+            });
+          }
 
           if (critiqued.length > 0) {
             return NextResponse.json({
@@ -119,6 +151,11 @@ Return ONLY a JSON array of tool IDs in order of relevance (most relevant first)
         }
       } catch (error) {
         console.error('Gemini ranking error:', error);
+        if (trace) {
+          trace.update({
+            output: { error: error instanceof Error ? error.message : String(error) },
+          });
+        }
         // Fall through to default ranking
       }
     }
