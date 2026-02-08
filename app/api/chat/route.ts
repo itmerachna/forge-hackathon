@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateChatResponseStream, isGeminiConfigured } from '../../../lib/gemini';
+import { getOpikClient } from '../../../lib/opik';
 import { needsSummarization, summarizeConversation, buildContextFromSummaries } from '../../../lib/summarize';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -32,7 +33,7 @@ async function loadSkillContext(message: string): Promise<string> {
 export async function POST(request: NextRequest) {
   try {
     const body: ChatRequest = await request.json();
-    const { message, conversationHistory, userProfile, context } = body;
+    const { message, conversationHistory, userProfile, context, session_id } = body;
 
     if (!message?.trim()) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
@@ -84,6 +85,25 @@ export async function POST(request: NextRequest) {
         userProfile,
         enrichedContext || context,
       );
+
+      // Log Opik trace with thread_id for conversation grouping
+      const opik = getOpikClient();
+      if (opik && session_id) {
+        const userId = userProfile?.user_id || 'anonymous';
+        opik.trace({
+          name: 'chat',
+          threadId: session_id,
+          input: { message, user_id: userId, turn: (conversationHistory || []).filter(m => m.role === 'user').length + 1 },
+          output: { streaming: true },
+          metadata: {
+            skill_loaded: skillContext ? true : false,
+            has_context: Boolean(enrichedContext),
+            user_focus: userProfile?.focus || 'unknown',
+            user_level: userProfile?.skill_level || 'unknown',
+          },
+          tags: ['chat', userProfile?.focus || 'no-focus'].filter(Boolean),
+        });
+      }
 
       return new Response(stream, {
         headers: {

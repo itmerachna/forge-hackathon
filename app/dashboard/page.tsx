@@ -28,6 +28,7 @@ export default function Dashboard() {
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const sessionIdRef = useRef<string>(generateId());
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -215,6 +216,7 @@ export default function Dashboard() {
             goal: userProfile.goal,
           } : undefined,
           context: tools.length > 0 ? `This week's tools (${tools.length} active, ${stashedTools.length} stashed): ${tools.map(t => `${t.name} (${t.category}, ${t.pricing || 'Unknown pricing'}${triedTools.includes(t.id) ? ', already tried' : ''})`).join(', ')}` : undefined,
+          session_id: sessionIdRef.current,
         }),
         signal: abortControllerRef.current.signal,
       });

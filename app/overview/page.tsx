@@ -21,6 +21,7 @@ export default function Overview() {
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const sessionIdRef = useRef<string>(generateId());
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -100,6 +101,7 @@ export default function Overview() {
             goal: userProfile.goal,
           } : undefined,
           context: 'This is the overview/reflection space. Help the user reflect on progress, plan projects, and explore tools in depth.',
+          session_id: sessionIdRef.current,
         }),
         signal: abortControllerRef.current.signal,
       });
