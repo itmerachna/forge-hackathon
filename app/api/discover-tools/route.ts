@@ -360,16 +360,14 @@ async function fetchDevHuntTools(): Promise<DiscoveredTool[]> {
 
     console.log('DevHunt total products extracted:', allProducts.length);
 
+    // DevHunt is already a curated dev tool site — skip keyword filtering
+    // and let Gemini's isRelevant check handle relevance instead.
+    // Just truncate long descriptions to keep payloads manageable.
     return allProducts
-      .filter((tool: DevHuntTool) => {
-        const text = `${tool.name || ''} ${tool.description || ''}`.toLowerCase();
-        return text.includes('ai') || text.includes('design') || text.includes('creative') ||
-               text.includes('generative') || text.includes('llm') || text.includes('gpt');
-      })
       .slice(0, 15)
       .map((tool: DevHuntTool) => ({
         name: tool.name || 'Unknown',
-        description: tool.description || '',
+        description: (tool.description || '').slice(0, 300),
         website: tool.link || tool.devhunt_link || '',
         source: 'devhunt' as const,
         votes: typeof tool.votes_count === 'number' ? tool.votes_count : 0,
