@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase, isSupabaseConfigured } from '../../../lib/supabase';
-import { isGeminiConfigured } from '../../../lib/gemini';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { trackLLMCall } from '../../../lib/opik';
+import { isGeminiConfigured, getGeminiClient } from '../../../lib/gemini';
 
 interface ReflectionInput {
   user_id: string;
@@ -23,8 +21,7 @@ export async function POST(request: NextRequest) {
     let aiInsights = '';
     if (isGeminiConfigured()) {
       try {
-        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+        const ai = getGeminiClient();
 
         const prompt = `As an AI learning coach, analyze this weekly reflection and provide brief, encouraging insights (3-4 sentences).
 
@@ -38,16 +35,11 @@ Reflection:
 
 Provide personalized insights about their learning patterns and suggestions for next week.`;
 
-        const result = await model.generateContent(prompt);
-        aiInsights = result.response.text();
-
-        await trackLLMCall({
-          name: 'weekly-reflection-analysis',
-          input: { reflection: body },
-          output: aiInsights,
+        const result = await ai.models.generateContent({
           model: 'gemini-2.5-flash-lite',
-          tags: ['reflection', 'analysis'],
+          contents: prompt,
         });
+        aiInsights = result.text || '';
       } catch (error) {
         console.error('AI insights error:', error);
         aiInsights = 'Great job reflecting on your week! Keep exploring and building.';

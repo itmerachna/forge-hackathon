@@ -1,6 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { isGeminiConfigured } from './gemini';
-import { trackCritique } from './opik';
+import { isGeminiConfigured, getGeminiClient } from './gemini';
 
 interface RecommendedTool {
   id?: number;
@@ -124,15 +122,6 @@ export async function critiqueRecommendations(
   score = Math.max(0, Math.min(100, score));
   const passed = score >= QUALITY_THRESHOLD;
 
-  // Track critique in Opik
-  await trackCritique({
-    recommendations,
-    userProfile: userProfile as Record<string, unknown>,
-    score,
-    issues,
-    passed,
-  });
-
   return { score, issues, suggestions, passed };
 }
 
@@ -188,8 +177,7 @@ async function regenerateWithFeedback(
   suggestions: string[],
 ): Promise<RecommendedTool[]> {
   try {
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+    const ai = getGeminiClient();
 
     const prompt = `You are an AI tool recommendation engine. Select the best 10 tools from the list below for this user.
 
@@ -212,8 +200,11 @@ ${availableTools.map((t, i) => `${i + 1}. ${t.name} (${t.category}, ${t.difficul
 Return ONLY a JSON array of indices (1-based) of the best tools, max 10:
 [1, 5, 3, ...]`;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+    const result = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-lite',
+      contents: prompt,
+    });
+    const text = result.text || '';
 
     const match = text.match(/\[[\d,\s]+\]/);
     if (match) {

@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
-import { isGeminiConfigured } from '../../../lib/gemini';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { trackLLMCall } from '../../../lib/opik';
+import { isGeminiConfigured, getGeminiClient } from '../../../lib/gemini';
 
 // 30 test cases covering various scenarios
 const TEST_CASES = [
@@ -217,8 +215,7 @@ async function evaluateTestCase(testCase: typeof TEST_CASES[0]): Promise<{
   }
 
   try {
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+    const ai = getGeminiClient();
 
     // Simulate the recommendation prompt
     const prompt = `You are Forge, an AI learning coach. Based on this user's profile, recommend 5 AI tools.
@@ -236,17 +233,11 @@ For each tool, provide: name, category, difficulty level, pricing (Free/Freemium
 Respond ONLY with a JSON array:
 [{"name":"...", "category":"...", "difficulty":"...", "pricing":"...", "reason":"..."}]`;
 
-    const result = await model.generateContent(prompt);
-    const responseText = result.response.text();
-
-    // Track in Opik
-    await trackLLMCall({
-      name: `eval-${testCase.name}`,
-      input: { testCase: testCase.name, userProfile: testCase.userProfile },
-      output: responseText,
+    const result = await ai.models.generateContent({
       model: 'gemini-2.5-flash-lite',
-      tags: ['evaluation', 'test-case'],
+      contents: prompt,
     });
+    const responseText = result.text || '';
 
     // Score the response
     let score = 0;

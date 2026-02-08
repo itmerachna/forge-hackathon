@@ -1,6 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { isGeminiConfigured } from './gemini';
-import { trackSummarization } from './opik';
+import { isGeminiConfigured, getGeminiClient } from './gemini';
 import type { ChatMessage } from '../types';
 
 const SUMMARIZE_THRESHOLD = 10; // Summarize every 10+ messages
@@ -28,8 +26,7 @@ export async function summarizeConversation(
   }
 
   try {
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+    const ai = getGeminiClient();
 
     const conversationText = messages
       .map(m => `${m.role === 'user' ? 'User' : 'Forge'}: ${m.content}`)
@@ -49,20 +46,16 @@ Respond with ONLY a JSON object:
   "actionItems": ["what the user plans to do next"]
 }`;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+    const result = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-lite',
+      contents: prompt,
+    });
+    const text = result.text || '';
 
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return null;
 
     const parsed = JSON.parse(jsonMatch[0]) as ConversationSummary;
-
-    // Track in Opik
-    await trackSummarization({
-      messageCount: messages.length,
-      summary: parsed.summary,
-      userId,
-    });
 
     return parsed;
   } catch (error) {

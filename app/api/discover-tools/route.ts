@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase, isSupabaseConfigured } from '../../../lib/supabase';
-import { isGeminiConfigured } from '../../../lib/gemini';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { isGeminiConfigured, getGeminiClient } from '../../../lib/gemini';
 
 // Tool categories we care about
 const TOOL_CATEGORIES = [
@@ -229,8 +228,7 @@ async function categorizeWithGemini(tools: DiscoveredTool[]): Promise<Categorize
   }
 
   try {
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+    const ai = getGeminiClient();
 
     const prompt = `Analyze these AI tools and categorize them. For each tool, determine:
 1. category (one of: ${TOOL_CATEGORIES.join(', ')})
@@ -244,8 +242,11 @@ ${tools.map((t, i) => `${i + 1}. ${t.name}: ${t.description}`).join('\n')}
 Respond with ONLY a JSON array, no markdown, no explanation:
 [{"index": 0, "category": "AI Design", "difficulty": "Beginner", "pricing": "Freemium", "isRelevant": true}, ...]`;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+    const result = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-lite',
+      contents: prompt,
+    });
+    const text = result.text || '';
 
     // Parse JSON from response
     const jsonMatch = text.match(/\[[\s\S]*\]/);

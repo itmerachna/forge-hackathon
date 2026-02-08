@@ -1,17 +1,32 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
+import { trackGemini } from 'opik-gemini';
 import type { ChatMessage, UserPreferences } from '../types';
 
-let _genAI: GoogleGenerativeAI | null = null;
+const MODEL = 'gemini-2.5-flash-lite';
 
-function getGenAI(): GoogleGenerativeAI {
-  if (!_genAI) {
-    _genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+let _ai: GoogleGenAI | null = null;
+
+function getAI(): GoogleGenAI {
+  if (!_ai) {
+    const raw = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+
+    // Wrap with Opik tracking if OPIK_API_KEY is set
+    if (process.env.OPIK_API_KEY) {
+      _ai = trackGemini(raw, { projectName: 'forge-ai-coach' });
+    } else {
+      _ai = raw;
+    }
   }
-  return _genAI;
+  return _ai;
 }
 
 export function isGeminiConfigured(): boolean {
   return Boolean(process.env.GEMINI_API_KEY);
+}
+
+// Expose the tracked client for direct use in other files (reflection, recommendations, etc.)
+export function getGeminiClient(): GoogleGenAI {
+  return getAI();
 }
 
 // Gemini requires history to start with a user message and alternate user/model
@@ -37,7 +52,7 @@ function cleanHistory(conversationHistory: ChatMessage[], currentMessage: string
 
   // Map to Gemini format
   return trimmed.map((msg) => ({
-    role: msg.role === 'assistant' ? 'model' as const : 'user' as const,
+    role: msg.role === 'assistant' ? ('model' as const) : ('user' as const),
     parts: [{ text: msg.content }],
   }));
 }
@@ -103,22 +118,17 @@ export async function generateChatResponse(
   const contextAddition = context ? `\n\nAdditional context: ${context}` : '';
   const fullSystemPrompt = systemPrompt + contextAddition;
 
-  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
-
+  const ai = getAI();
   const history = cleanHistory(conversationHistory, message);
 
-  // Prepend system prompt as first exchange (since systemInstruction may not be supported)
-  const historyWithSystem = [
-    { role: 'user' as const, parts: [{ text: `System: ${fullSystemPrompt}` }] },
-    { role: 'model' as const, parts: [{ text: 'Understood! I am Forge, your AI learning coach. I will help you discover and master AI tools. How can I help you today?' }] },
-    ...history,
-  ];
+  const chat = ai.chats.create({
+    model: MODEL,
+    config: { systemInstruction: fullSystemPrompt },
+    history,
+  });
 
-  const chat = model.startChat({ history: historyWithSystem });
-
-  const result = await chat.sendMessage(message);
-  const response = result.response;
-  return response.text();
+  const response = await chat.sendMessage({ message });
+  return response.text || '';
 }
 
 export async function generateChatResponseStream(
@@ -135,27 +145,23 @@ export async function generateChatResponseStream(
   const contextAddition = context ? `\n\nAdditional context: ${context}` : '';
   const fullSystemPrompt = systemPrompt + contextAddition;
 
-  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
-
+  const ai = getAI();
   const history = cleanHistory(conversationHistory, message);
 
-  // Prepend system prompt as first exchange (since systemInstruction may not be supported)
-  const historyWithSystem = [
-    { role: 'user' as const, parts: [{ text: `System: ${fullSystemPrompt}` }] },
-    { role: 'model' as const, parts: [{ text: 'Understood! I am Forge, your AI learning coach. I will help you discover and master AI tools. How can I help you today?' }] },
-    ...history,
-  ];
+  const chat = ai.chats.create({
+    model: MODEL,
+    config: { systemInstruction: fullSystemPrompt },
+    history,
+  });
 
-  const chat = model.startChat({ history: historyWithSystem });
-
-  const result = await chat.sendMessageStream(message);
+  const stream = await chat.sendMessageStream({ message });
 
   const encoder = new TextEncoder();
   return new ReadableStream({
     async start(controller) {
       try {
-        for await (const chunk of result.stream) {
-          const text = chunk.text();
+        for await (const chunk of stream) {
+          const text = chunk.text;
           if (text) {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`));
           }
