@@ -21,7 +21,6 @@ const QUALITY_THRESHOLDS = {
   reddit: { minScore: 5 },
   producthunt: { minVotes: 0 }, // PH already curates heavily
   devhunt: { minVotes: 0 },
-  betalist: { minVotes: 0 },
 };
 
 // Max tools per Gemini categorization batch
@@ -307,10 +306,10 @@ async function fetchRedditTools(): Promise<DiscoveredTool[]> {
   return allPosts.slice(0, 15);
 }
 
-// DevHunt - developer tool launches
+// DevHunt - developer tool launches (uses /api/past-week-tools, no auth required)
 async function fetchDevHuntTools(): Promise<DiscoveredTool[]> {
   try {
-    const response = await fetchWithTimeout('https://devhunt.org/api/tools?sort=new&limit=20');
+    const response = await fetchWithTimeout('https://devhunt.org/api/past-week-tools?limit=20');
 
     if (!response.ok) {
       console.error('DevHunt API error:', response.status);
@@ -318,73 +317,28 @@ async function fetchDevHuntTools(): Promise<DiscoveredTool[]> {
     }
 
     const data = await response.json();
-    const tools = Array.isArray(data) ? data : data?.tools || [];
+    const tools = Array.isArray(data) ? data : data?.tools || data?.data || [];
 
     return tools
       .filter((tool: DevHuntTool) => {
-        const text = `${tool.name || ''} ${tool.description || ''} ${(tool.tags || []).join(' ')}`.toLowerCase();
+        const text = `${tool.name || ''} ${tool.description || ''}`.toLowerCase();
         return text.includes('ai') || text.includes('design') || text.includes('creative') ||
                text.includes('generative') || text.includes('llm') || text.includes('gpt');
       })
       .slice(0, 15)
       .map((tool: DevHuntTool) => ({
         name: tool.name || 'Unknown',
-        description: tool.description || tool.tagline || '',
-        website: tool.url || tool.website || '',
+        description: tool.description || '',
+        website: tool.link || tool.devhunt_link || '',
         source: 'devhunt' as const,
-        votes: tool.votes || tool.upvotes || 0,
-        topics: tool.tags || [],
+        votes: tool.votes_count || 0,
+        topics: [],
       }));
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       console.error('DevHunt fetch timed out');
     } else {
       console.error('DevHunt fetch error:', error);
-    }
-    return [];
-  }
-}
-
-// BetaList - startup/beta launches
-async function fetchBetaListTools(): Promise<DiscoveredTool[]> {
-  try {
-    const response = await fetchWithTimeout(
-      'https://betalist.com/api/v1/startups?q=AI&sort=newest',
-      {
-        headers: {
-          'Accept': 'application/json',
-        },
-      }
-    );
-
-    if (!response.ok) {
-      console.error('BetaList API error:', response.status);
-      return [];
-    }
-
-    const data = await response.json();
-    const startups = Array.isArray(data) ? data : data?.startups || [];
-
-    return startups
-      .filter((s: BetaListStartup) => {
-        const text = `${s.name || ''} ${s.description || ''} ${s.tagline || ''}`.toLowerCase();
-        return text.includes('ai') || text.includes('design') || text.includes('creative') ||
-               text.includes('generative') || text.includes('tool');
-      })
-      .slice(0, 15)
-      .map((s: BetaListStartup) => ({
-        name: s.name || 'Unknown',
-        description: s.description || s.tagline || '',
-        website: s.url || s.website || '',
-        source: 'betalist' as const,
-        votes: s.followers || 0,
-        topics: s.tags || [],
-      }));
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      console.error('BetaList fetch timed out');
-    } else {
-      console.error('BetaList fetch error:', error);
     }
     return [];
   }
@@ -677,7 +631,7 @@ interface DiscoveredTool {
   name: string;
   description: string;
   website: string;
-  source: 'producthunt' | 'github' | 'hackernews' | 'reddit' | 'devhunt' | 'betalist';
+  source: 'producthunt' | 'github' | 'hackernews' | 'reddit' | 'devhunt';
   votes: number;
   topics: string[];
 }
@@ -732,28 +686,15 @@ interface RedditPost {
 interface DevHuntTool {
   name?: string;
   description?: string;
-  tagline?: string;
-  url?: string;
-  website?: string;
-  votes?: number;
-  upvotes?: number;
-  tags?: string[];
-}
-
-interface BetaListStartup {
-  name?: string;
-  description?: string;
-  tagline?: string;
-  url?: string;
-  website?: string;
-  followers?: number;
-  tags?: string[];
+  link?: string;
+  devhunt_link?: string;
+  votes_count?: number;
 }
 
 // API Route Handler
 export async function POST(request: NextRequest) {
   try {
-    const { sources = ['producthunt', 'github', 'hackernews', 'reddit', 'devhunt', 'betalist'] } = await request.json();
+    const { sources = ['producthunt', 'github', 'hackernews', 'reddit', 'devhunt'] } = await request.json();
 
     // Fetch from all requested sources in parallel
     const fetchPromises: Promise<DiscoveredTool[]>[] = [];
@@ -763,7 +704,6 @@ export async function POST(request: NextRequest) {
     if (sources.includes('hackernews')) fetchPromises.push(fetchHackerNewsTools());
     if (sources.includes('reddit')) fetchPromises.push(fetchRedditTools());
     if (sources.includes('devhunt')) fetchPromises.push(fetchDevHuntTools());
-    if (sources.includes('betalist')) fetchPromises.push(fetchBetaListTools());
 
     const results = await Promise.all(fetchPromises);
     const allTools = results.flat();
@@ -839,8 +779,7 @@ export async function GET() {
       github: true, // Works without token, just rate limited
       hackernews: true, // Public API
       reddit: true, // Public API
-      devhunt: true, // Public API
-      betalist: true, // Public API
+      devhunt: true, // Public API (past-week-tools endpoint)
       gemini: isGeminiConfigured(),
       supabase: isSupabaseConfigured(),
     },
