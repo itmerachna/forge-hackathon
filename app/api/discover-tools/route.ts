@@ -292,10 +292,12 @@ async function saveToSupabase(tools: CategorizedTool[]): Promise<{ saved: number
 
   let saved = 0;
   let skipped = 0;
+  const skipReasons: { name: string; reason: string }[] = [];
 
   for (const tool of tools) {
     if (!tool.isRelevant) {
       skipped++;
+      skipReasons.push({ name: tool.name, reason: 'not_relevant' });
       continue;
     }
 
@@ -308,6 +310,7 @@ async function saveToSupabase(tools: CategorizedTool[]): Promise<{ saved: number
 
     if (existing) {
       skipped++;
+      skipReasons.push({ name: tool.name, reason: 'already_exists' });
       continue;
     }
 
@@ -323,14 +326,16 @@ async function saveToSupabase(tools: CategorizedTool[]): Promise<{ saved: number
     });
 
     if (error) {
-      console.error('Insert error for', tool.name, error);
+      console.error('Insert error for', tool.name, ':', error.message, error.code, error.details);
       skipped++;
+      skipReasons.push({ name: tool.name, reason: `insert_error: ${error.message}` });
     } else {
       saved++;
+      console.log('Saved new tool:', tool.name, '| category:', tool.category);
     }
   }
 
-  return { saved, skipped };
+  return { saved, skipped, skipReasons };
 }
 
 // Helper functions
@@ -494,7 +499,7 @@ export async function POST(request: NextRequest) {
     const categorizedTools = await categorizeWithGemini(newTools);
 
     // Save to Supabase
-    const { saved, skipped } = await saveToSupabase(categorizedTools);
+    const { saved, skipped, skipReasons } = await saveToSupabase(categorizedTools);
 
     return NextResponse.json({
       success: true,
@@ -503,6 +508,7 @@ export async function POST(request: NextRequest) {
       new: newTools.length,
       saved,
       skipped,
+      skipReasons,
       tools: categorizedTools.filter((t) => t.isRelevant),
     });
   } catch (error) {
