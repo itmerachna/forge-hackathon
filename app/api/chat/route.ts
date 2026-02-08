@@ -2,9 +2,44 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateChatResponseStream, isGeminiConfigured } from '../../../lib/gemini';
 import { getOpikClient } from '../../../lib/opik';
 import { needsSummarization, summarizeConversation, buildContextFromSummaries } from '../../../lib/summarize';
+import { supabase, isSupabaseConfigured } from '../../../lib/supabase';
 import { promises as fs } from 'fs';
 import path from 'path';
 import type { ChatRequest } from '../../../types';
+
+// Cached tool catalog — refreshed every 5 minutes
+let _toolCatalogCache: string = '';
+let _toolCatalogTimestamp = 0;
+const TOOL_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function loadToolCatalog(): Promise<string> {
+  const now = Date.now();
+  if (_toolCatalogCache && (now - _toolCatalogTimestamp) < TOOL_CACHE_TTL) {
+    return _toolCatalogCache;
+  }
+
+  if (!isSupabaseConfigured()) return '';
+
+  try {
+    const { data: tools } = await supabase
+      .from('tools')
+      .select('name, category, description, pricing, difficulty, website')
+      .order('category', { ascending: true });
+
+    if (!tools || tools.length === 0) return '';
+
+    const catalog = tools.map((t: { name: string; category: string; description: string; pricing: string; difficulty: string; website: string }) =>
+      `- ${t.name} [${t.category}] (${t.pricing}, ${t.difficulty}): ${(t.description || '').slice(0, 120)} → ${t.website}`
+    ).join('\n');
+
+    _toolCatalogCache = `\n\nYOUR TOOL CATALOG (${tools.length} tools — ALWAYS recommend from this list first):\n${catalog}\n\nIMPORTANT: When suggesting tools, ALWAYS pick from the catalog above. Only suggest a tool outside this catalog if nothing here fits the user's specific need, and clearly say "This one isn't in our catalog yet, but..." when you do.`;
+    _toolCatalogTimestamp = now;
+    return _toolCatalogCache;
+  } catch (error) {
+    console.error('Failed to load tool catalog:', error);
+    return '';
+  }
+}
 
 // Load a skill file as additional context for Gemini
 async function loadSkillContext(message: string): Promise<string> {
@@ -61,15 +96,18 @@ export async function POST(request: NextRequest) {
         tags: ['chat', userProfile?.focus || 'no-focus'].filter(Boolean),
       }) : null;
 
-      // Span: Load relevant skill reference based on message intent
+      // Load tool catalog and skill context in parallel
       const skillSpanStart = Date.now();
-      const skillContext = await loadSkillContext(message);
+      const [skillContext, toolCatalog] = await Promise.all([
+        loadSkillContext(message),
+        loadToolCatalog(),
+      ]);
       if (trace) {
         trace.span({
           name: 'load-skill-context',
           type: 'tool',
           input: { message_intent: message.slice(0, 100) },
-          output: { loaded: Boolean(skillContext), length: skillContext.length },
+          output: { loaded: Boolean(skillContext), length: skillContext.length, catalog_loaded: Boolean(toolCatalog) },
           metadata: { duration_ms: Date.now() - skillSpanStart },
         });
       }
@@ -80,7 +118,7 @@ export async function POST(request: NextRequest) {
       const reflectionNudge = isEndOfWeek ? '\n\nNOTE: It\'s near the end of the week. If the conversation naturally allows it, gently remind the user they can do their weekly reflection in the Tracker page. Don\'t force it — only mention if it fits the flow.' : '';
 
       // Span: Context rot prevention — summarize long conversations
-      let enrichedContext = (context || '') + skillContext + reflectionNudge;
+      let enrichedContext = (context || '') + toolCatalog + skillContext + reflectionNudge;
       if (conversationHistory && needsSummarization(conversationHistory)) {
         const summarizeStart = Date.now();
         const summary = await summarizeConversation(conversationHistory.slice(0, -5));
