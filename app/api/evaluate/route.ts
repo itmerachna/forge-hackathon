@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { isGeminiConfigured, getGeminiClient } from '../../../lib/gemini';
 import { getOpikClient } from '../../../lib/opik';
 import { supabase, isSupabaseConfigured } from '../../../lib/supabase';
+import { Opik } from 'opik';
 
 // Delay helper for rate limit avoidance
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -513,11 +514,73 @@ Respond ONLY with a JSON array (no markdown, no explanation):
   }
 }
 
-// GET: Run all test cases
+// Seed the Opik dataset with test cases (idempotent — only creates if needed)
+async function seedOpikDataset(opik: Opik) {
+  const dataset = await opik.getOrCreateDataset(
+    'forge-eval-suite',
+    '30 test cases for Forge AI coach recommendation quality'
+  );
+
+  // Insert all test cases as dataset items
+  const items = TEST_CASES.map(tc => ({
+    input: {
+      userProfile: tc.userProfile,
+      context: tc.context || null,
+    },
+    expected_output: {
+      expectedTraits: tc.expectedTraits,
+    },
+    metadata: {
+      test_id: tc.id,
+      test_name: tc.name,
+      category: tc.name.split('-')[0],
+    },
+  }));
+
+  await dataset.insert(items);
+  return dataset;
+}
+
+// GET: Run all test cases as an Opik experiment
 export async function GET() {
   const results = [];
   let totalScore = 0;
   let passedCount = 0;
+
+  const opik = getOpikClient();
+
+  // Seed the Opik dataset (idempotent)
+  let datasetName: string | undefined;
+  if (opik) {
+    try {
+      const dataset = await seedOpikDataset(opik);
+      datasetName = dataset.name;
+    } catch (error) {
+      console.error('Failed to seed Opik dataset:', error);
+    }
+  }
+
+  // Create a named experiment for this run
+  const runTimestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const experimentName = `forge-eval-${runTimestamp}`;
+  let experimentId: string | undefined;
+
+  if (opik && datasetName) {
+    try {
+      const experiment = await opik.createExperiment({
+        datasetName,
+        name: experimentName,
+        experimentConfig: {
+          model: 'gemini-2.5-flash-lite',
+          pass_threshold: 60,
+          grounded_in_catalog: true,
+        },
+      });
+      experimentId = experiment.id;
+    } catch (error) {
+      console.error('Failed to create Opik experiment:', error);
+    }
+  }
 
   // Load tool catalog once for all test cases (grounds responses in real tools)
   const toolCatalog = await loadToolCatalog();
@@ -539,7 +602,6 @@ export async function GET() {
   const avgScore = Math.round(totalScore / TEST_CASES.length);
 
   // Flush Opik to ensure all traces/scores are sent
-  const opik = getOpikClient();
   if (opik) {
     await opik.flush();
   }
@@ -552,6 +614,7 @@ export async function GET() {
       average_score: avgScore,
       pass_rate: `${Math.round((passedCount / TEST_CASES.length) * 100)}%`,
     },
+    experiment: experimentId ? { id: experimentId, name: experimentName, dataset: datasetName } : undefined,
     results,
   });
 }
