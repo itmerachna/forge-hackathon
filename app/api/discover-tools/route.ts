@@ -285,9 +285,9 @@ Respond with ONLY a JSON array, no markdown, no explanation:
 }
 
 // Save new tools to Supabase
-async function saveToSupabase(tools: CategorizedTool[]): Promise<{ saved: number; skipped: number }> {
+async function saveToSupabase(tools: CategorizedTool[]): Promise<{ saved: number; skipped: number; skipReasons: { name: string; reason: string }[] }> {
   if (!isSupabaseConfigured()) {
-    return { saved: 0, skipped: tools.length };
+    return { saved: 0, skipped: tools.length, skipReasons: [{ name: '*', reason: 'supabase_not_configured' }] };
   }
 
   let saved = 0;
