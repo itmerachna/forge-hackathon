@@ -1,6 +1,82 @@
 import { NextResponse } from 'next/server';
 import { isGeminiConfigured, getGeminiClient } from '../../../lib/gemini';
 import { getOpikClient } from '../../../lib/opik';
+import { supabase, isSupabaseConfigured } from '../../../lib/supabase';
+
+// Delay helper for rate limit avoidance
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Retry with exponential backoff on 429 errors
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const is429 = error instanceof Error && (
+        error.message.includes('429') ||
+        error.message.includes('RESOURCE_EXHAUSTED') ||
+        error.message.includes('rate')
+      );
+      if (is429 && attempt < maxRetries) {
+        const backoff = Math.pow(2, attempt + 1) * 1000; // 2s, 4s, 8s
+        await delay(backoff);
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error('Retry exhausted');
+}
+
+// Load real tools from Supabase (or fallback) for grounded evaluation
+async function loadToolCatalog(): Promise<string> {
+  const fallbackTools = [
+    { name: 'AKOOL', category: 'AI Video Editor', pricing: 'Freemium', difficulty: 'Beginner', description: 'AI Video Creation – Avatars, Translation, Face Swap' },
+    { name: 'PixAI', category: 'AI Design', pricing: 'Paid ($9.99/mo+)', difficulty: 'Beginner', description: 'Anime & Character Generation AI' },
+    { name: 'RecCloud', category: 'AI Audio', pricing: 'Freemium', difficulty: 'Beginner', description: 'AI Audio & Video Processing' },
+    { name: 'KREA AI', category: 'AI Design', pricing: 'Freemium', difficulty: 'Intermediate', description: 'AI Creative Suite for Images, Video & 3D' },
+    { name: 'Gamma', category: 'AI Design', pricing: 'Freemium', difficulty: 'Beginner', description: 'AI design for presentations, websites, and more' },
+    { name: 'Anything', category: 'Vibe Coding', pricing: 'Freemium', difficulty: 'Intermediate', description: 'Turn words into apps, sites, tools' },
+    { name: 'Relume', category: 'AI Site Builder', pricing: 'Freemium', difficulty: 'Beginner', description: 'Websites designed and built faster with AI' },
+    { name: 'Descript', category: 'AI Video Editor', pricing: 'Paid ($24/mo+)', difficulty: 'Intermediate', description: 'AI video editing with transcription and voice cloning' },
+    { name: 'PicWish', category: 'AI Photo Editor', pricing: 'Freemium', difficulty: 'Beginner', description: 'All-in-one free AI photo editor' },
+    { name: 'Luma AI', category: 'AI Design', pricing: 'Freemium', difficulty: 'Intermediate', description: 'Images and videos with precision, speed, control' },
+    { name: 'Midjourney', category: 'AI Design', pricing: 'Paid ($10/mo+)', difficulty: 'Intermediate', description: 'AI image generation via Discord' },
+    { name: 'Runway', category: 'AI Video Editor', pricing: 'Freemium', difficulty: 'Intermediate', description: 'AI video generation and editing suite' },
+    { name: 'Figma', category: 'AI Design', pricing: 'Freemium', difficulty: 'Intermediate', description: 'Collaborative design tool with AI features' },
+    { name: 'Cursor', category: 'Vibe Coding', pricing: 'Freemium', difficulty: 'Intermediate', description: 'AI-powered code editor' },
+    { name: 'v0', category: 'Vibe Coding', pricing: 'Freemium', difficulty: 'Beginner', description: 'AI UI component generator by Vercel' },
+    { name: 'Bolt', category: 'Vibe Coding', pricing: 'Freemium', difficulty: 'Beginner', description: 'AI full-stack app builder in the browser' },
+    { name: 'Lovable', category: 'Vibe Coding', pricing: 'Freemium', difficulty: 'Beginner', description: 'AI app builder for non-coders' },
+    { name: 'Webflow', category: 'AI Site Builder', pricing: 'Freemium', difficulty: 'Intermediate', description: 'Visual web design with AI features' },
+    { name: 'Framer', category: 'AI Site Builder', pricing: 'Freemium', difficulty: 'Intermediate', description: 'AI-powered website builder' },
+    { name: 'Canva', category: 'AI Design', pricing: 'Freemium', difficulty: 'Beginner', description: 'Easy graphic design with AI tools' },
+    { name: 'DALL-E', category: 'AI Design', pricing: 'Paid', difficulty: 'Beginner', description: 'AI image generation by OpenAI' },
+    { name: 'ElevenLabs', category: 'AI Audio', pricing: 'Freemium', difficulty: 'Beginner', description: 'AI voice cloning and text-to-speech' },
+    { name: 'Suno', category: 'AI Audio', pricing: 'Freemium', difficulty: 'Beginner', description: 'AI music generation' },
+    { name: 'Udio', category: 'AI Audio', pricing: 'Freemium', difficulty: 'Beginner', description: 'AI music creation platform' },
+    { name: 'Claude', category: 'AI Writing', pricing: 'Freemium', difficulty: 'Beginner', description: 'AI assistant for writing and coding' },
+    { name: 'Notion AI', category: 'AI Productivity', pricing: 'Paid ($10/mo+)', difficulty: 'Beginner', description: 'AI-powered workspace and notes' },
+    { name: 'GitHub Copilot', category: 'Vibe Coding', pricing: 'Paid ($10/mo+)', difficulty: 'Intermediate', description: 'AI code completion in VS Code' },
+    { name: 'Spline', category: 'AI Design', pricing: 'Freemium', difficulty: 'Intermediate', description: '3D design tool with AI features' },
+    { name: 'Rive', category: 'AI Design', pricing: 'Freemium', difficulty: 'Advanced', description: 'Interactive animations for apps and games' },
+    { name: 'Vercel', category: 'Vibe Coding', pricing: 'Freemium', difficulty: 'Intermediate', description: 'AI-powered deployment and hosting' },
+  ];
+
+  // Try to load from Supabase first
+  if (isSupabaseConfigured()) {
+    try {
+      const { data: tools } = await supabase.from('tools').select('name, category, pricing, difficulty, description').order('id', { ascending: true });
+      if (tools && tools.length > 0) {
+        return tools.map(t => `- ${t.name} (${t.category}, ${t.pricing}, ${t.difficulty}): ${t.description}`).join('\n');
+      }
+    } catch {
+      // Fall through to fallback
+    }
+  }
+
+  return fallbackTools.map(t => `- ${t.name} (${t.category}, ${t.pricing}, ${t.difficulty}): ${t.description}`).join('\n');
+}
 
 // 30 test cases covering various scenarios
 const TEST_CASES = [
@@ -273,7 +349,7 @@ function scoreResult(
 }
 
 // Run evaluation for a single test case
-async function evaluateTestCase(testCase: typeof TEST_CASES[0]): Promise<{
+async function evaluateTestCase(testCase: typeof TEST_CASES[0], toolCatalog: string): Promise<{
   id: number;
   name: string;
   passed: boolean;
@@ -290,7 +366,12 @@ async function evaluateTestCase(testCase: typeof TEST_CASES[0]): Promise<{
   try {
     const ai = getGeminiClient();
 
-    const prompt = `You are Forge, an AI learning coach. Based on this user's profile, recommend 5 AI tools.
+    const prompt = `You are Forge, an AI learning coach for design & vibe coding tools. Based on this user's profile, recommend exactly 5 AI tools from the catalog below.
+
+IMPORTANT: You MUST only recommend tools from this catalog. Do NOT make up tools.
+
+TOOL CATALOG:
+${toolCatalog}
 
 User Profile:
 - Focus: ${testCase.userProfile.focus || 'Not specified'}
@@ -300,15 +381,15 @@ User Profile:
 - Goal: ${testCase.userProfile.goal || 'Not specified'}
 ${testCase.context ? `\nContext: Tools tried: ${testCase.context.tools_tried}, Day of week: ${testCase.context.week_day}` : ''}
 
-For each tool, provide: name, category, difficulty level, pricing (Free/Freemium/Paid), and a one-line reason why it fits this user.
+Pick the 5 most relevant tools for this user. Match their skill level, respect their pricing preferences, and avoid tools they already use.
 
-Respond ONLY with a JSON array:
+Respond ONLY with a JSON array (no markdown, no explanation):
 [{"name":"...", "category":"...", "difficulty":"...", "pricing":"...", "reason":"..."}]`;
 
-    const result = await ai.models.generateContent({
+    const result = await withRetry(() => ai.models.generateContent({
       model: 'gemini-2.5-flash-lite',
       contents: prompt,
-    });
+    }));
     const responseText = result.text || '';
 
     // Parse response
@@ -438,12 +519,21 @@ export async function GET() {
   let totalScore = 0;
   let passedCount = 0;
 
-  // Run test cases sequentially to avoid rate limits
-  for (const testCase of TEST_CASES) {
-    const result = await evaluateTestCase(testCase);
+  // Load tool catalog once for all test cases (grounds responses in real tools)
+  const toolCatalog = await loadToolCatalog();
+
+  // Run test cases sequentially with delays to avoid Gemini rate limits
+  for (let i = 0; i < TEST_CASES.length; i++) {
+    const testCase = TEST_CASES[i];
+    const result = await evaluateTestCase(testCase, toolCatalog);
     results.push(result);
     totalScore += result.score;
     if (result.passed) passedCount++;
+
+    // 1.5s delay between requests to stay under Gemini rate limits
+    if (i < TEST_CASES.length - 1) {
+      await delay(1500);
+    }
   }
 
   const avgScore = Math.round(totalScore / TEST_CASES.length);
