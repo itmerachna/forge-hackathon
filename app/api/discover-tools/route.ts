@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase, isSupabaseConfigured } from '../../../lib/supabase';
+import { supabase, supabaseAdmin, isSupabaseConfigured } from '../../../lib/supabase';
 import { isGeminiConfigured, getGeminiClient } from '../../../lib/gemini';
 
 // Tool categories we care about
@@ -314,8 +314,8 @@ async function saveToSupabase(tools: CategorizedTool[]): Promise<{ saved: number
       continue;
     }
 
-    // Insert new tool (only columns that exist in schema)
-    const { error } = await supabase.from('tools').insert({
+    // Insert new tool using admin client to bypass RLS
+    const { error } = await supabaseAdmin.from('tools').insert({
       name: tool.name,
       description: tool.description || '',
       category: tool.category,
