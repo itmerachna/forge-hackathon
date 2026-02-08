@@ -79,7 +79,7 @@ async function loadToolCatalog(): Promise<string> {
   return fallbackTools.map(t => `- ${t.name} (${t.category}, ${t.pricing}, ${t.difficulty}): ${t.description}`).join('\n');
 }
 
-// 30 test cases covering various scenarios
+// 45 test cases covering various scenarios
 const TEST_CASES = [
   // Free-only user preferences (1-5)
   {
@@ -276,6 +276,102 @@ const TEST_CASES = [
     name: 'edge-non-english-goal',
     userProfile: { focus: 'Web Design', skill_level: 'Beginner', preferences: '', existing_tools: '', goal: 'Aprender herramientas de IA' },
     expectedTraits: { should_handle_gracefully: true },
+  },
+
+  // Cross-category and specific workflow tests (31-37)
+  {
+    id: 31,
+    name: 'workflow-video-to-social',
+    userProfile: { focus: 'UI/UX Design', skill_level: 'Intermediate', preferences: 'Tools that work together', existing_tools: 'Canva', goal: 'Create short-form video content for social media' },
+    expectedTraits: { category_match: 'video', skill_level: 'Intermediate' },
+  },
+  {
+    id: 32,
+    name: 'workflow-design-to-code',
+    userProfile: { focus: 'Frontend Development', skill_level: 'Intermediate', preferences: '', existing_tools: 'Figma', goal: 'Go from design to code faster' },
+    expectedTraits: { skill_level: 'Intermediate', category_match: 'coding' },
+  },
+  {
+    id: 33,
+    name: 'workflow-audio-podcast',
+    userProfile: { focus: 'No-Code Tools', skill_level: 'Beginner', preferences: 'Free or cheap', existing_tools: 'Canva', goal: 'Launch a podcast with AI-generated music and editing' },
+    expectedTraits: { must_be_free: true, category_match: 'audio' },
+  },
+  {
+    id: 34,
+    name: 'premium-user-wants-best',
+    userProfile: { focus: 'UI/UX Design', skill_level: 'Advanced', preferences: 'Price doesnt matter, I want the absolute best', existing_tools: 'Figma, Sketch', goal: 'Use the most powerful AI tools available' },
+    expectedTraits: { skill_level: 'Advanced', should_include_advanced: true },
+  },
+  {
+    id: 35,
+    name: 'student-budget-creative',
+    userProfile: { focus: 'Web Design', skill_level: 'Beginner', preferences: 'Student budget, need free tiers', existing_tools: 'Canva free', goal: 'Build a portfolio for job applications' },
+    expectedTraits: { must_be_free: true, skill_level: 'Beginner' },
+  },
+  {
+    id: 36,
+    name: 'team-collaboration-focus',
+    userProfile: { focus: 'UI/UX Design', skill_level: 'Intermediate', preferences: 'Must support real-time collaboration', existing_tools: 'Figma', goal: 'Find AI tools my team can use together' },
+    expectedTraits: { skill_level: 'Intermediate' },
+  },
+  {
+    id: 37,
+    name: 'mobile-first-creator',
+    userProfile: { focus: 'No-Code Tools', skill_level: 'Beginner', preferences: 'Must have mobile app', existing_tools: 'None', goal: 'Create content from my phone' },
+    expectedTraits: { skill_level: 'Beginner' },
+  },
+
+  // Time-constrained and productivity tests (38-41)
+  {
+    id: 38,
+    name: 'time-30min-per-week',
+    userProfile: { focus: 'Web Design', skill_level: 'Beginner', weekly_hours: '30 minutes', preferences: '', existing_tools: 'None', goal: 'Learn one tool really well' },
+    expectedTraits: { limited_time: true, should_focus: true, skill_level: 'Beginner' },
+  },
+  {
+    id: 39,
+    name: 'time-20hrs-deep-dive',
+    userProfile: { focus: 'Frontend Development', skill_level: 'Advanced', weekly_hours: '20+ hours', preferences: '', existing_tools: 'VS Code, Cursor', goal: 'Deep dive into every vibe coding tool' },
+    expectedTraits: { skill_level: 'Advanced' },
+  },
+  {
+    id: 40,
+    name: 'productivity-automate-workflow',
+    userProfile: { focus: 'No-Code Tools', skill_level: 'Intermediate', preferences: 'Automation and productivity', existing_tools: 'Notion, Zapier', goal: 'Automate my design-to-publish workflow' },
+    expectedTraits: { skill_level: 'Intermediate' },
+  },
+  {
+    id: 41,
+    name: 'freelancer-client-work',
+    userProfile: { focus: 'Web Design', skill_level: 'Intermediate', preferences: 'Professional output quality', existing_tools: 'Figma, Webflow', goal: 'Speed up client website delivery' },
+    expectedTraits: { skill_level: 'Intermediate', should_not_suggest_known: true },
+  },
+
+  // Specific category deep-dives (42-45)
+  {
+    id: 42,
+    name: 'photo-editing-specialist',
+    userProfile: { focus: 'UI/UX Design', skill_level: 'Intermediate', preferences: 'Photo editing specifically', existing_tools: 'Photoshop', goal: 'Replace Photoshop with AI alternatives' },
+    expectedTraits: { skill_level: 'Intermediate', category_match: 'photo' },
+  },
+  {
+    id: 43,
+    name: 'writing-content-creator',
+    userProfile: { focus: 'Web Design', skill_level: 'Beginner', preferences: '', existing_tools: 'None', goal: 'Write blog posts and social media content with AI' },
+    expectedTraits: { skill_level: 'Beginner', category_match: 'writing' },
+  },
+  {
+    id: 44,
+    name: 'site-builder-no-code',
+    userProfile: { focus: 'No-Code Tools', skill_level: 'Beginner', preferences: 'Zero coding required', existing_tools: 'None', goal: 'Build a landing page without writing code' },
+    expectedTraits: { skill_level: 'Beginner', category_match: 'site' },
+  },
+  {
+    id: 45,
+    name: 'multi-tool-comparison',
+    userProfile: { focus: 'Frontend Development', skill_level: 'Intermediate', preferences: 'Want to compare options', existing_tools: 'Cursor', goal: 'Find the best vibe coding tool - compare Bolt, v0, and Lovable' },
+    expectedTraits: { skill_level: 'Intermediate', should_not_suggest_known: true },
   },
 ];
 
@@ -518,7 +614,7 @@ Respond ONLY with a JSON array (no markdown, no explanation):
 async function seedOpikDataset(opik: Opik) {
   const dataset = await opik.getOrCreateDataset(
     'forge-eval-suite',
-    '30 test cases for Forge AI coach recommendation quality'
+    '45 test cases for Forge AI coach recommendation quality'
   );
 
   // Insert all test cases as dataset items
