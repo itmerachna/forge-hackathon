@@ -307,9 +307,11 @@ async function fetchRedditTools(): Promise<DiscoveredTool[]> {
 }
 
 // DevHunt - developer tool launches (uses /api/past-week-tools, no auth required)
+// Response format: array of week objects, each with a `products` array
+// Product fields: id, email, name, description, logo_url, data_added, launch_date, votes_count, devhunt_link, link
 async function fetchDevHuntTools(): Promise<DiscoveredTool[]> {
   try {
-    const response = await fetchWithTimeout('https://devhunt.org/api/past-week-tools?limit=20');
+    const response = await fetchWithTimeout('https://devhunt.org/api/past-week-tools?limit=3');
 
     if (!response.ok) {
       console.error('DevHunt API error:', response.status);
@@ -317,9 +319,48 @@ async function fetchDevHuntTools(): Promise<DiscoveredTool[]> {
     }
 
     const data = await response.json();
-    const tools = Array.isArray(data) ? data : data?.tools || data?.data || [];
 
-    return tools
+    // Debug: log the shape of the response so we can verify the format
+    console.log('DevHunt response type:', typeof data, Array.isArray(data) ? `array[${data.length}]` : '');
+    if (Array.isArray(data) && data.length > 0) {
+      console.log('DevHunt first item keys:', Object.keys(data[0]));
+      if (data[0].products) {
+        console.log('DevHunt products count:', data[0].products.length);
+        if (data[0].products.length > 0) {
+          console.log('DevHunt first product keys:', Object.keys(data[0].products[0]));
+        }
+      }
+    } else if (data && typeof data === 'object') {
+      console.log('DevHunt response keys:', Object.keys(data));
+    }
+
+    // Try multiple response shapes
+    let allProducts: DevHuntTool[] = [];
+
+    if (Array.isArray(data)) {
+      // Shape 1: array of week objects with products arrays
+      for (const item of data) {
+        if (item.products && Array.isArray(item.products)) {
+          allProducts.push(...item.products);
+        } else if (item.name) {
+          // Shape 2: direct array of tools
+          allProducts.push(item);
+        }
+      }
+    } else if (data?.products && Array.isArray(data.products)) {
+      // Shape 3: single object with products array
+      allProducts = data.products;
+    } else if (data?.tools && Array.isArray(data.tools)) {
+      // Shape 4: single object with tools array
+      allProducts = data.tools;
+    } else if (data?.data && Array.isArray(data.data)) {
+      // Shape 5: single object with data array
+      allProducts = data.data;
+    }
+
+    console.log('DevHunt total products extracted:', allProducts.length);
+
+    return allProducts
       .filter((tool: DevHuntTool) => {
         const text = `${tool.name || ''} ${tool.description || ''}`.toLowerCase();
         return text.includes('ai') || text.includes('design') || text.includes('creative') ||
@@ -331,7 +372,7 @@ async function fetchDevHuntTools(): Promise<DiscoveredTool[]> {
         description: tool.description || '',
         website: tool.link || tool.devhunt_link || '',
         source: 'devhunt' as const,
-        votes: tool.votes_count || 0,
+        votes: typeof tool.votes_count === 'number' ? tool.votes_count : 0,
         topics: [],
       }));
   } catch (error) {
@@ -694,7 +735,7 @@ interface DevHuntTool {
 // API Route Handler
 export async function POST(request: NextRequest) {
   try {
-    const { sources = ['producthunt', 'github', 'hackernews', 'reddit', 'devhunt'] } = await request.json();
+    const { sources = ['producthunt', 'github', 'hackernews', 'reddit', 'devhunt'], debug = false } = await request.json();
 
     // Fetch from all requested sources in parallel
     const fetchPromises: Promise<DiscoveredTool[]>[] = [];
@@ -707,6 +748,20 @@ export async function POST(request: NextRequest) {
 
     const results = await Promise.all(fetchPromises);
     const allTools = results.flat();
+
+    // Debug mode: return raw per-source counts + any raw data for inspection
+    if (debug) {
+      const sourceCounts: Record<string, number> = {};
+      for (const tool of allTools) {
+        sourceCounts[tool.source] = (sourceCounts[tool.source] || 0) + 1;
+      }
+      return NextResponse.json({
+        debug: true,
+        sourceCounts,
+        totalDiscovered: allTools.length,
+        tools: allTools.slice(0, 50),
+      });
+    }
 
     // Deduplicate by name within this batch
     const uniqueTools = allTools.reduce((acc: DiscoveredTool[], tool) => {
