@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateChatResponseStream, isGeminiConfigured } from '../../../lib/gemini';
 import { needsSummarization, summarizeConversation, buildContextFromSummaries } from '../../../lib/summarize';
-import { trackLLMCall } from '../../../lib/opik';
 import { promises as fs } from 'fs';
 import path from 'path';
 import type { ChatRequest } from '../../../types';
@@ -78,15 +77,6 @@ export async function POST(request: NextRequest) {
           }
         }
       }
-
-      // Track chat call in Opik
-      trackLLMCall({
-        name: 'chat-stream',
-        input: { message, hasHistory: (conversationHistory?.length || 0) > 0 },
-        output: '[streaming]',
-        model: 'gemini-2.5-flash-lite',
-        tags: ['chat', 'streaming'],
-      }).catch(() => {});
 
       const stream = await generateChatResponseStream(
         message,

@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase, isSupabaseConfigured } from '../../../lib/supabase';
-import { isGeminiConfigured } from '../../../lib/gemini';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { isGeminiConfigured, getGeminiClient } from '../../../lib/gemini';
 import { generateWithCritique } from '../../../lib/critique';
-import { trackRecommendation } from '../../../lib/opik';
 
 export async function GET(request: NextRequest) {
   try {
@@ -61,8 +59,7 @@ export async function GET(request: NextRequest) {
     // Use Gemini to rank tools if available
     if (isGeminiConfigured() && userPrefs) {
       try {
-        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+        const ai = getGeminiClient();
 
         const prompt = `You are an AI learning coach. Based on the user's preferences, rank these AI tools from most to least relevant.
 
@@ -80,8 +77,11 @@ ${availableTools.map((t, i) => `${i + 1}. ${t.name} (${t.category}) - ${t.descri
 Return ONLY a JSON array of tool IDs in order of relevance (most relevant first), max 10 tools:
 [1, 5, 3, ...]`;
 
-        const result = await model.generateContent(prompt);
-        const text = result.response.text();
+        const result = await ai.models.generateContent({
+          model: 'gemini-2.5-flash-lite',
+          contents: prompt,
+        });
+        const text = result.text || '';
 
         // Parse the JSON array from response
         const match = text.match(/\[[\d,\s]+\]/);
@@ -104,15 +104,6 @@ Return ONLY a JSON array of tool IDs in order of relevance (most relevant first)
               goal: userPrefs.goal,
             },
           );
-
-          // Track to Opik
-          await trackRecommendation({
-            userProfile: userPrefs,
-            recommendations: critiqued,
-            critiqueResult: critique,
-            source: 'gemini_ranked_with_critique',
-            regenerated: attempts > 1,
-          });
 
           if (critiqued.length > 0) {
             return NextResponse.json({
@@ -151,13 +142,6 @@ Return ONLY a JSON array of tool IDs in order of relevance (most relevant first)
     }
 
     const finalRecs = recommendations.slice(0, 10);
-
-    // Track non-AI recommendations too
-    await trackRecommendation({
-      userProfile: userPrefs || {},
-      recommendations: finalRecs,
-      source: 'default',
-    });
 
     return NextResponse.json({
       recommendations: finalRecs,

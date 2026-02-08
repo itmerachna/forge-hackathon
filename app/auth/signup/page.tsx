@@ -33,17 +33,20 @@ export default function SignUpPage() {
     setLoading(true);
 
     try {
-      const result = await signUp(email, password);
+      // Add timeout to prevent infinite spinner if Supabase hangs (rate limiting, etc)
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Request timed out. Please try again in a moment.')), 15000)
+      );
+
+      const result = await Promise.race([signUp(email, password), timeoutPromise]);
 
       if (result.error) {
         setError(result.error.message);
-        setLoading(false);
         return;
       }
 
       if (!result.session) {
         setError('This email is already registered. Please sign in instead.');
-        setLoading(false);
         return;
       }
 
@@ -54,6 +57,7 @@ export default function SignUpPage() {
       } else {
         setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
       }
+    } finally {
       setLoading(false);
     }
   };
