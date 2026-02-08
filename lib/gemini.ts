@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { Opik } from 'opik';
+import { Opik, Prompt } from 'opik';
 import { trackGemini } from 'opik-gemini';
 import type { ChatMessage, UserPreferences } from '../types';
 
@@ -63,8 +63,8 @@ function cleanHistory(conversationHistory: ChatMessage[], currentMessage: string
   }));
 }
 
-function buildSystemPrompt(userProfile?: UserPreferences): string {
-  const basePrompt = `You are Forge — an AI learning coach who helps people discover and master AI-powered design and creative tools. Think of yourself as a knowledgeable friend who's tried every tool out there, not a corporate assistant reading from a script.
+// Default base prompt — also stored in Opik Prompt Library for versioning
+const DEFAULT_BASE_PROMPT = `You are Forge — an AI learning coach who helps people discover and master AI-powered design and creative tools. Think of yourself as a knowledgeable friend who's tried every tool out there, not a corporate assistant reading from a script.
 
 PERSONALITY & TONE:
 - Talk like a real person. Use contractions, casual language, and natural phrasing.
@@ -93,6 +93,34 @@ WHAT YOU DON'T DO:
 PROJECT SUGGESTIONS:
 When users ask what to build or seem stuck, suggest a specific mini-project they can finish in 1-2 hours using one of their weekly tools. Make it concrete: "Try making a 30-second intro video for your portfolio with AKOOL" not "You could explore video creation tools."`;
 
+// Cached prompt loaded from Opik Prompt Library (auto-versioned)
+let _cachedPrompt: Prompt | null = null;
+let _promptLoadAttempted = false;
+
+async function getVersionedBasePrompt(): Promise<string> {
+  if (!process.env.OPIK_API_KEY || _promptLoadAttempted) {
+    return _cachedPrompt?.prompt || DEFAULT_BASE_PROMPT;
+  }
+
+  _promptLoadAttempted = true;
+  try {
+    const opik = new Opik({
+      apiKey: process.env.OPIK_API_KEY,
+      projectName: 'forge-ai-coach',
+    });
+    // createPrompt is idempotent — creates new version only if template changed
+    _cachedPrompt = await opik.createPrompt({
+      name: 'forge-system-prompt',
+      prompt: DEFAULT_BASE_PROMPT,
+    });
+    return _cachedPrompt.prompt;
+  } catch (error) {
+    console.error('Failed to load versioned prompt from Opik:', error);
+    return DEFAULT_BASE_PROMPT;
+  }
+}
+
+function buildSystemPrompt(basePrompt: string, userProfile?: UserPreferences): string {
   if (userProfile) {
     return `${basePrompt}
 
@@ -120,7 +148,8 @@ export async function generateChatResponse(
     throw new Error('Gemini API key not configured');
   }
 
-  const systemPrompt = buildSystemPrompt(userProfile);
+  const basePrompt = await getVersionedBasePrompt();
+  const systemPrompt = buildSystemPrompt(basePrompt, userProfile);
   const contextAddition = context ? `\n\nAdditional context: ${context}` : '';
   const fullSystemPrompt = systemPrompt + contextAddition;
 
@@ -147,7 +176,8 @@ export async function generateChatResponseStream(
     throw new Error('Gemini API key not configured');
   }
 
-  const systemPrompt = buildSystemPrompt(userProfile);
+  const basePrompt = await getVersionedBasePrompt();
+  const systemPrompt = buildSystemPrompt(basePrompt, userProfile);
   const contextAddition = context ? `\n\nAdditional context: ${context}` : '';
   const fullSystemPrompt = systemPrompt + contextAddition;
 
