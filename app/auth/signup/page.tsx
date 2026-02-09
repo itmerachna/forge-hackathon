@@ -61,7 +61,12 @@ export default function SignUpPage() {
       }
 
       if (result.error) {
-        setError(result.error.message);
+        const msg = result.error.message?.toLowerCase() || '';
+        if (msg.includes('invalid login credentials') || msg.includes('invalid credentials')) {
+          setError('An account with this email already exists. Try signing in instead, or use "Forgot password" on the sign-in page.');
+        } else {
+          setError(result.error.message);
+        }
         return;
       }
 
