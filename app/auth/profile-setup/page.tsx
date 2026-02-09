@@ -81,11 +81,6 @@ export default function ProfileSetupPage() {
     setLoading(true);
 
     try {
-      // 30s timeout — Supabase free tier can take 20s+ to wake from sleep
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Request timed out. Please try again in a moment.')), 30000)
-      );
-
       const submitProfile = async () => {
         // Check for duplicate username using shared client from context
         if (supabase) {
@@ -119,12 +114,28 @@ export default function ProfileSetupPage() {
         }
       };
 
-      await Promise.race([submitProfile(), timeoutPromise]);
+      // Retry once on timeout (Supabase free tier can pause)
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const timeoutMs = attempt === 0 ? 30000 : 45000;
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('TIMEOUT')), timeoutMs)
+          );
+          await Promise.race([submitProfile(), timeoutPromise]);
+          break; // Success
+        } catch (err) {
+          if (err instanceof Error && err.message === 'TIMEOUT' && attempt === 0) {
+            setError('Connecting to server... retrying.');
+            continue;
+          }
+          throw err;
+        }
+      }
 
       router.push('/onboarding');
     } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') {
-        setError('Request was interrupted. Please try again.');
+      if (err instanceof Error && err.message === 'TIMEOUT') {
+        setError('The server is taking too long to respond. Your Supabase project may be paused — check your Supabase dashboard, then try again.');
       } else {
         setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
       }
@@ -147,9 +158,9 @@ export default function ProfileSetupPage() {
       <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-maiden/30 to-transparent pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-phoenix/10 rounded-full blur-[120px] pointer-events-none" />
 
-      {/* Logo */}
-      <div className="mb-6 relative z-10">
-        <Image src="/forge-logo.svg" alt="Forge" width={120} height={48} priority />
+      {/* Logo — matches landing page size */}
+      <div className="mb-8 relative z-10">
+        <Image src="/forge-logo.svg" alt="Forge" width={240} height={96} priority />
       </div>
 
       {/* Card */}
