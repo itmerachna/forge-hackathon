@@ -13,6 +13,7 @@ Or paste this into Google Colab.
 
 import os
 import json
+import re
 import time
 from opik import Opik
 from opik.evaluation import evaluate
@@ -25,6 +26,11 @@ OPIK_WORKSPACE = os.environ.get("OPIK_WORKSPACE", "itmerachna")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 MODEL = "gemini-2.5-flash-lite"
 DATASET_NAME = "forge-eval-suite"
+
+# Rate limit config — Gemini free tier is strict
+DELAY_BETWEEN_CALLS = 2.5  # seconds between calls
+MAX_RETRIES = 3  # retry on 429/rate limit errors
+INITIAL_BACKOFF = 4.0  # first retry wait (doubles each retry)
 
 # --- Tool Catalog (loaded from your Supabase DB — paste updated version if needed) ---
 # This is the fallback catalog. The eval will use this to ground Gemini's recommendations.
@@ -59,10 +65,20 @@ TOOL_CATALOG = """- AKOOL (AI Video Editor, Freemium, Beginner): AI Video Creati
 - Rive (AI Design, Freemium, Advanced): Interactive animations for apps and games
 - Vercel (Vibe Coding, Freemium, Intermediate): AI-powered deployment and hosting"""
 
+# Shared Gemini client (created once)
+_gemini_client = None
+
+
+def get_client():
+    global _gemini_client
+    if _gemini_client is None:
+        _gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+    return _gemini_client
+
 
 def get_gemini_response(user_profile: dict, context: dict = None) -> str:
-    """Call Gemini to get tool recommendations for a user profile."""
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    """Call Gemini with retry + exponential backoff on rate limits."""
+    client = get_client()
 
     prompt = f"""You are Forge, an AI learning coach for design & vibe coding tools. Based on this user's profile, recommend exactly 5 AI tools from the catalog below.
 
@@ -81,39 +97,95 @@ User Profile:
 
 Pick the 5 most relevant tools for this user. Match their skill level, respect their pricing preferences, and avoid tools they already use.
 
-Respond ONLY with a JSON array (no markdown, no explanation):
+Respond ONLY with a raw JSON array. No markdown, no code fences, no explanation — just the array:
 [{{"name":"...", "category":"...", "difficulty":"...", "pricing":"...", "reason":"..."}}]"""
 
-    response = client.models.generate_content(
-        model=MODEL,
-        contents=prompt,
-    )
-    return response.text or ""
+    last_error = None
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            response = client.models.generate_content(
+                model=MODEL,
+                contents=prompt,
+            )
+            return response.text or ""
+        except Exception as e:
+            last_error = e
+            err_str = str(e).lower()
+            is_rate_limit = any(kw in err_str for kw in ['429', 'resource_exhausted', 'rate', 'quota'])
+            if is_rate_limit and attempt < MAX_RETRIES:
+                wait = INITIAL_BACKOFF * (2 ** attempt)
+                print(f"  Rate limited (attempt {attempt + 1}/{MAX_RETRIES + 1}), waiting {wait}s...")
+                time.sleep(wait)
+                continue
+            raise last_error
 
 
 def parse_recommendations(text: str) -> list:
-    """Parse JSON array from Gemini response."""
-    import re
-    match = re.search(r'\[[\s\S]*\]', text)
-    if not match:
+    """Parse JSON array from Gemini response — handles markdown code fences, extra text, etc."""
+    if not text or text.startswith("ERROR:"):
         return []
+
+    # Strip markdown code fences if present (```json ... ``` or ``` ... ```)
+    cleaned = re.sub(r'```(?:json)?\s*', '', text)
+    cleaned = re.sub(r'```', '', cleaned)
+    cleaned = cleaned.strip()
+
+    # Try direct parse first (ideal case: pure JSON)
     try:
-        return json.loads(match.group(0))
+        parsed = json.loads(cleaned)
+        if isinstance(parsed, list):
+            return parsed
     except json.JSONDecodeError:
-        return []
+        pass
+
+    # Fallback: extract JSON array via regex
+    match = re.search(r'\[[\s\S]*\]', cleaned)
+    if match:
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError:
+            pass
+
+    # Last resort: try extracting from original text (before stripping fences)
+    match = re.search(r'\[[\s\S]*\]', text)
+    if match:
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError:
+            pass
+
+    return []
+
+
+# Track stats for summary
+_stats = {"success": 0, "rate_limited": 0, "errors": 0, "empty_json": 0}
 
 
 def evaluation_task(dataset_item: dict) -> dict:
     """Run a single eval: call Gemini, return input/output for scoring."""
+    global _stats
+
     user_profile = dataset_item.get("input", {}).get("userProfile", {})
     context = dataset_item.get("input", {}).get("context", None)
+
+    test_name = dataset_item.get("metadata", {}).get("test_name", "unknown")
+    test_id = dataset_item.get("metadata", {}).get("test_id", "?")
 
     try:
         response_text = get_gemini_response(user_profile, context)
         recommendations = parse_recommendations(response_text)
 
+        if recommendations:
+            _stats["success"] += 1
+            print(f"  [{test_id}] {test_name}: OK ({len(recommendations)} tools)")
+        else:
+            _stats["empty_json"] += 1
+            # Show first 120 chars of response for debugging
+            preview = response_text[:120].replace('\n', ' ')
+            print(f"  [{test_id}] {test_name}: JSON PARSE FAILED — {preview}...")
+
         # Rate limit: wait between calls
-        time.sleep(1.0)
+        time.sleep(DELAY_BETWEEN_CALLS)
 
         return {
             "input": json.dumps(user_profile),
@@ -122,10 +194,18 @@ def evaluation_task(dataset_item: dict) -> dict:
             "context": {"user_profile": user_profile, "expected": dataset_item.get("expected_output", {})},
         }
     except Exception as e:
-        time.sleep(2.0)  # Extra wait on error (likely rate limit)
+        err_str = str(e)
+        if '429' in err_str or 'rate' in err_str.lower():
+            _stats["rate_limited"] += 1
+            print(f"  [{test_id}] {test_name}: RATE LIMITED (all retries exhausted)")
+        else:
+            _stats["errors"] += 1
+            print(f"  [{test_id}] {test_name}: ERROR — {err_str[:100]}")
+
+        time.sleep(DELAY_BETWEEN_CALLS * 2)  # Extra wait on error
         return {
             "input": json.dumps(user_profile),
-            "output": f"ERROR: {str(e)}",
+            "output": f"ERROR: {err_str}",
             "recommendations": [],
             "context": {"user_profile": user_profile, "expected": dataset_item.get("expected_output", {})},
         }
@@ -145,7 +225,7 @@ class PricingRespect(base_metric.BaseMetric):
 
         recs = parse_recommendations(output)
         if not recs:
-            return score_result.ScoreResult(value=0.0, name=self.name, reason="No recommendations")
+            return score_result.ScoreResult(value=0.0, name=self.name, reason="No recommendations parsed")
 
         all_free = all(
             "free" in (r.get("pricing", "").lower())
@@ -171,7 +251,7 @@ class SkillMatch(base_metric.BaseMetric):
 
         recs = parse_recommendations(output)
         if not recs:
-            return score_result.ScoreResult(value=0.0, name=self.name, reason="No recommendations")
+            return score_result.ScoreResult(value=0.0, name=self.name, reason="No recommendations parsed")
 
         match_count = sum(
             1 for r in recs
@@ -206,6 +286,9 @@ class Novelty(base_metric.BaseMetric):
         known = [t.strip() for t in existing.split(",")]
         recs = parse_recommendations(output)
 
+        if not recs:
+            return score_result.ScoreResult(value=0.0, name=self.name, reason="No recommendations parsed")
+
         suggested_known = any(
             any(k in r.get("name", "").lower() for k in known)
             for r in recs
@@ -224,7 +307,7 @@ class ToolVariety(base_metric.BaseMetric):
     def score(self, output: str, **kwargs) -> score_result.ScoreResult:
         recs = parse_recommendations(output)
         if not recs:
-            return score_result.ScoreResult(value=0.0, name=self.name, reason="No recommendations")
+            return score_result.ScoreResult(value=0.0, name=self.name, reason="No recommendations parsed")
 
         categories = set(r.get("category", "") for r in recs)
         ratio = min(len(categories) / 3, 1.0)  # 3+ categories = perfect score
@@ -248,6 +331,40 @@ class ValidJSON(base_metric.BaseMetric):
         return score_result.ScoreResult(value=0.5, name=self.name, reason=f"Only {len(recs)} tools returned")
 
 
+class CatalogGrounding(base_metric.BaseMetric):
+    """Checks that recommended tools come from the catalog (no hallucinated tools)."""
+    name = "catalog_grounding"
+
+    # Known tool names from the catalog (lowercased for matching)
+    CATALOG_NAMES = {
+        "akool", "pixai", "reccloud", "krea ai", "gamma", "anything", "relume",
+        "descript", "picwish", "luma ai", "midjourney", "runway", "figma",
+        "cursor", "v0", "bolt", "lovable", "webflow", "framer", "canva",
+        "dall-e", "dalle", "elevenlabs", "suno", "udio", "claude",
+        "notion ai", "github copilot", "spline", "rive", "vercel",
+    }
+
+    def score(self, output: str, **kwargs) -> score_result.ScoreResult:
+        recs = parse_recommendations(output)
+        if not recs:
+            return score_result.ScoreResult(value=0.0, name=self.name, reason="No recommendations parsed")
+
+        grounded = 0
+        hallucinated = []
+        for r in recs:
+            name = r.get("name", "").lower().strip()
+            if any(cat_name in name or name in cat_name for cat_name in self.CATALOG_NAMES):
+                grounded += 1
+            else:
+                hallucinated.append(r.get("name", "unknown"))
+
+        ratio = grounded / len(recs) if recs else 0
+        reason = f"{grounded}/{len(recs)} from catalog"
+        if hallucinated:
+            reason += f" — hallucinated: {', '.join(hallucinated[:3])}"
+        return score_result.ScoreResult(value=ratio, name=self.name, reason=reason)
+
+
 def main():
     if not OPIK_API_KEY:
         print("ERROR: Set OPIK_API_KEY environment variable")
@@ -261,7 +378,13 @@ def main():
 
     print(f"Loading dataset: {DATASET_NAME}")
     dataset = client.get_dataset(name=DATASET_NAME)
-    print(f"Dataset loaded: {len(dataset.get_items())} items")
+    items = dataset.get_items()
+    print(f"Dataset loaded: {len(items)} items")
+
+    # Quick sanity check: print first item's structure
+    if items:
+        first = items[0]
+        print(f"Sample item keys: {list(first.keys()) if isinstance(first, dict) else dir(first)}")
 
     metrics = [
         ValidJSON(),
@@ -269,13 +392,15 @@ def main():
         SkillMatch(),
         Novelty(),
         ToolVariety(),
+        CatalogGrounding(),
     ]
 
-    print(f"Running evaluation with {len(metrics)} metrics...")
-    print("This will take a few minutes (45 Gemini API calls with rate limiting)...\n")
+    print(f"\nRunning evaluation with {len(metrics)} metrics...")
+    print(f"Config: {DELAY_BETWEEN_CALLS}s delay, {MAX_RETRIES} retries, {INITIAL_BACKOFF}s initial backoff")
+    print(f"Estimated time: ~{len(items) * (DELAY_BETWEEN_CALLS + 1.5):.0f}s ({len(items)} API calls)\n")
 
     results = evaluate(
-        experiment_name="forge-eval-full-run",
+        experiment_name="forge-eval-v2",
         dataset=dataset,
         task=evaluation_task,
         scoring_metrics=metrics,
@@ -283,7 +408,13 @@ def main():
 
     print("\n=== Evaluation Complete ===")
     print(f"Results: {results}")
+    print(f"\nStats: {_stats}")
+    print(f"  Successful API calls: {_stats['success']}")
+    print(f"  JSON parse failures:  {_stats['empty_json']}")
+    print(f"  Rate limit errors:    {_stats['rate_limited']}")
+    print(f"  Other errors:         {_stats['errors']}")
     print("\nCheck the Opik dashboard for detailed scores and traces.")
+    print("Look for experiment: forge-eval-v2")
 
 
 if __name__ == "__main__":
