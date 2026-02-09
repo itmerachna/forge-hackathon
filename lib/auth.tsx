@@ -221,6 +221,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error.message?.includes('users_email_key')) {
         return { error: new Error('This email is already associated with another account.') };
       }
+      if (error.message?.includes('row-level security') || error.message?.includes('RLS') || error.code === '42501') {
+        return { error: new Error('Row Level Security is blocking this operation. Go to Supabase SQL Editor and run: ALTER TABLE users DISABLE ROW LEVEL SECURITY;') };
+      }
       return { error: error as Error | null };
     }
 

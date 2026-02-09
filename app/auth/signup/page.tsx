@@ -9,7 +9,7 @@ import { useAuth } from '../../../lib/auth';
 
 export default function SignUpPage() {
   const router = useRouter();
-  const { signUp } = useAuth();
+  const { signUp, supabase } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -68,12 +68,37 @@ export default function SignUpPage() {
       // Supabase returns a user with empty identities for existing emails
       // when email confirmation is enabled (to avoid leaking account existence)
       if (result.user && result.user.identities?.length === 0) {
-        setError('This email is already registered. Please sign in instead.');
+        setError('This email is already registered. Sign in instead, or delete the user from Supabase Authentication → Users and try again.');
         return;
       }
 
       // If session exists, email confirmation is disabled — proceed directly
       if (result.session) {
+        // Verify database access before redirecting (catches RLS issues early)
+        if (supabase && result.user) {
+          const { error: dbError } = await supabase
+            .from('users')
+            .upsert({
+              id: result.user.id,
+              email: email,
+              name: '',
+              username: '',
+              bio: '',
+              avatar_url: '',
+              onboarding_completed: false,
+            }, { onConflict: 'id', ignoreDuplicates: true });
+
+          if (dbError) {
+            const isRLS = dbError.message?.includes('row-level security')
+              || dbError.message?.includes('RLS')
+              || dbError.code === '42501';
+            setError(isRLS
+              ? 'Row Level Security is blocking profile creation. Go to Supabase SQL Editor and run: ALTER TABLE users DISABLE ROW LEVEL SECURITY;'
+              : `Database error: ${dbError.message}`);
+            return;
+          }
+        }
+
         router.push('/auth/profile-setup');
         return;
       }
