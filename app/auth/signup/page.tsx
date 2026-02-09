@@ -82,6 +82,14 @@ export default function SignUpPage() {
         // Verify database access before redirecting (catches RLS issues early)
         // Retry up to 3 times to handle transient Supabase failures
         if (supabase && result.user) {
+          // Clean up orphaned public.users rows from previous signup attempts
+          // (old auth user deleted but public.users row left behind with same email)
+          await supabase
+            .from('users')
+            .delete()
+            .eq('email', email)
+            .neq('id', result.user.id);
+
           let dbSuccess = false;
           for (let attempt = 0; attempt < 3; attempt++) {
             const { error: dbError } = await supabase
