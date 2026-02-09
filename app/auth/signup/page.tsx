@@ -9,7 +9,7 @@ import { useAuth } from '../../../lib/auth';
 
 export default function SignUpPage() {
   const router = useRouter();
-  const { signUp } = useAuth();
+  const { signUp, supabase } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -68,12 +68,37 @@ export default function SignUpPage() {
       // Supabase returns a user with empty identities for existing emails
       // when email confirmation is enabled (to avoid leaking account existence)
       if (result.user && result.user.identities?.length === 0) {
-        setError('This email is already registered. Please sign in instead.');
+        setError('This email is already registered. Sign in instead, or delete the user from Supabase Authentication → Users and try again.');
         return;
       }
 
       // If session exists, email confirmation is disabled — proceed directly
       if (result.session) {
+        // Verify database access before redirecting (catches RLS issues early)
+        if (supabase && result.user) {
+          const { error: dbError } = await supabase
+            .from('users')
+            .upsert({
+              id: result.user.id,
+              email: email,
+              name: '',
+              username: '',
+              bio: '',
+              avatar_url: '',
+              onboarding_completed: false,
+            }, { onConflict: 'id', ignoreDuplicates: true });
+
+          if (dbError) {
+            const isRLS = dbError.message?.includes('row-level security')
+              || dbError.message?.includes('RLS')
+              || dbError.code === '42501';
+            setError(isRLS
+              ? 'Row Level Security is blocking profile creation. Go to Supabase SQL Editor and run: ALTER TABLE users DISABLE ROW LEVEL SECURITY;'
+              : `Database error: ${dbError.message}`);
+            return;
+          }
+        }
+
         router.push('/auth/profile-setup');
         return;
       }
@@ -108,8 +133,11 @@ export default function SignUpPage() {
           <div className="text-center py-4">
             <EnvelopeSimple size={48} className="text-phoenix mx-auto mb-4" />
             <h1 className="text-3xl font-serif text-white mb-2">Check your email</h1>
-            <p className="text-magnolia/60 mb-6">
-              We sent a confirmation link to <span className="text-white font-medium">{email}</span>. Click the link to activate your account, then come back and sign in.
+            <p className="text-magnolia/60 mb-4">
+              We sent a confirmation link to <span className="text-white font-medium">{email}</span>. Click the link to activate your account.
+            </p>
+            <p className="text-magnolia/40 text-xs mb-6">
+              Not seeing the email? Check your spam folder. If you still don&apos;t see it, your Supabase project may have email rate limits — try again in a few minutes.
             </p>
             <Link
               href="/auth/login"

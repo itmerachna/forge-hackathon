@@ -165,7 +165,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: new Error('Supabase not configured'), session: null, user: null };
     }
 
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: typeof window !== 'undefined'
+          ? `${window.location.origin}/auth/callback`
+          : undefined,
+      },
+    });
     return { error: error as Error | null, session: data?.session ?? null, user: data?.user ?? null };
   };
 
@@ -212,6 +220,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) {
       if (error.message?.includes('users_email_key')) {
         return { error: new Error('This email is already associated with another account.') };
+      }
+      if (error.message?.includes('row-level security') || error.message?.includes('RLS') || error.code === '42501') {
+        return { error: new Error('Row Level Security is blocking this operation. Go to Supabase SQL Editor and run: ALTER TABLE users DISABLE ROW LEVEL SECURITY;') };
       }
       return { error: error as Error | null };
     }
