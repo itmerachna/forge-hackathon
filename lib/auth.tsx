@@ -74,6 +74,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Retry up to 3 times — covers Supabase cold starts and transient failures
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
+        // Clean up orphaned rows: if user was deleted from auth.users and
+        // re-created, the old public.users row (different id, same email)
+        // blocks the new upsert due to the email unique constraint.
+        if (authUser.email) {
+          await supabase
+            .from('users')
+            .delete()
+            .eq('email', authUser.email)
+            .neq('id', authUser.id);
+        }
+
         const { error } = await supabase
           .from('users')
           .upsert(newProfile, { onConflict: 'id', ignoreDuplicates: true });
