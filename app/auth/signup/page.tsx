@@ -35,8 +35,9 @@ export default function SignUpPage() {
 
     try {
       // Add timeout to prevent infinite spinner if Supabase hangs (rate limiting, etc)
+      // 30s timeout — Supabase free tier can take 20s+ to wake from sleep
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Request timed out. Please try again in a moment.')), 15000)
+        setTimeout(() => reject(new Error('Request timed out. Please try again in a moment.')), 30000)
       );
 
       const result = await Promise.race([signUp(email, password), timeoutPromise]);

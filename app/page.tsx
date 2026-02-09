@@ -7,15 +7,15 @@ import Link from 'next/link';
 export default function Home() {
   return (
     <div className="w-full h-screen bg-royal text-magnolia flex items-center justify-center relative overflow-hidden fade-in">
-      {/* Centered Content Group */}
-      <div className="flex flex-col items-center text-center px-4 relative z-10">
-        {/* Logo */}
-        <div className="mb-8">
+      {/* Centered Content Group — shifted up for better visual balance */}
+      <div className="flex flex-col items-center text-center px-4 relative z-10 -mt-12">
+        {/* Logo — 2x size, pushed up 50px */}
+        <div className="mb-8 -mt-[50px]">
           <Image
             src="/forge-logo.svg"
             alt="Forge"
-            width={120}
-            height={48}
+            width={240}
+            height={96}
             priority
           />
         </div>
@@ -42,7 +42,7 @@ export default function Home() {
           href="/auth/signup"
           className="px-5 py-2.5 bg-phoenix text-white font-medium text-sm rounded-full hover:bg-orange-600 transition-colors shadow-glow flex items-center gap-2 group"
         >
-          Get Started or Sign Back In
+          Get Started
           <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
         </Link>
       </div>

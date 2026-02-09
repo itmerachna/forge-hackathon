@@ -20,16 +20,26 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
 
-    const { error } = await signIn(email, password);
+    try {
+      // 30s timeout — Supabase free tier can take 20s+ to wake from sleep
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Request timed out. Please try again in a moment.')), 30000)
+      );
 
-    if (error) {
-      setError(error.message);
+      const result = await Promise.race([signIn(email, password), timeoutPromise]);
+
+      if (result.error) {
+        setError(result.error.message);
+        return;
+      }
+
+      // Redirect to dashboard (profile check happens in dashboard)
+      router.push('/dashboard');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+    } finally {
       setLoading(false);
-      return;
     }
-
-    // Redirect to dashboard (profile check happens in dashboard)
-    router.push('/dashboard');
   };
 
   return (
