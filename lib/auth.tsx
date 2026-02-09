@@ -165,7 +165,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: new Error('Supabase not configured'), session: null, user: null };
     }
 
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: typeof window !== 'undefined'
+          ? `${window.location.origin}/auth/callback`
+          : undefined,
+      },
+    });
     return { error: error as Error | null, session: data?.session ?? null, user: data?.user ?? null };
   };
 

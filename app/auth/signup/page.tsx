@@ -108,8 +108,11 @@ export default function SignUpPage() {
           <div className="text-center py-4">
             <EnvelopeSimple size={48} className="text-phoenix mx-auto mb-4" />
             <h1 className="text-3xl font-serif text-white mb-2">Check your email</h1>
-            <p className="text-magnolia/60 mb-6">
-              We sent a confirmation link to <span className="text-white font-medium">{email}</span>. Click the link to activate your account, then come back and sign in.
+            <p className="text-magnolia/60 mb-4">
+              We sent a confirmation link to <span className="text-white font-medium">{email}</span>. Click the link to activate your account.
+            </p>
+            <p className="text-magnolia/40 text-xs mb-6">
+              Not seeing the email? Check your spam folder. If you still don&apos;t see it, your Supabase project may have email rate limits — try again in a few minutes.
             </p>
             <Link
               href="/auth/login"
