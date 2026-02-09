@@ -3,11 +3,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Sparkle,
   CaretDown,
-  Robot,
   ArrowUpRight,
   PaperPlaneRight,
-  Globe,
-  XLogo,
   ThumbsUp,
   ThumbsDown,
 } from '@phosphor-icons/react';
@@ -135,14 +132,19 @@ export default function Dashboard() {
     fetchTools();
   }, [user?.id]);
 
-  // Swap a tool from active list with one from stash
+  // Swap a tool from active list with a random one from stash
   const swapTool = (activeToolId: number) => {
     if (stashedTools.length === 0) return;
     const removedTool = tools.find(t => t.id === activeToolId);
-    const replacement = stashedTools[0];
+    const randomIndex = Math.floor(Math.random() * stashedTools.length);
+    const replacement = stashedTools[randomIndex];
     if (!removedTool || !replacement) return;
     setTools(prev => prev.map(t => t.id === activeToolId ? replacement : t));
-    setStashedTools(prev => [removedTool, ...prev.slice(1)]);
+    setStashedTools(prev => {
+      const next = [...prev];
+      next.splice(randomIndex, 1);
+      return [removedTool, ...next];
+    });
     setExpandedTool(null);
   };
 
@@ -200,13 +202,13 @@ export default function Dashboard() {
     }
   };
 
-  const handleSendMessage = useCallback(async () => {
-    if (!inputValue.trim() || isTyping) return;
+  const sendMessage = useCallback(async (text: string) => {
+    if (!text.trim() || isTyping) return;
 
     const userMessage: ChatMessage = {
       id: generateId(),
       role: 'user',
-      content: inputValue.trim(),
+      content: text.trim(),
       timestamp: new Date().toISOString(),
     };
 
@@ -299,7 +301,58 @@ export default function Dashboard() {
       setIsTyping(false);
       setMessages(prev => [...prev, { id: assistantMessageId, role: 'assistant', content: "I'm having trouble connecting right now. Please try again in a moment." }]);
     }
-  }, [inputValue, isTyping, messages, userProfile]);
+  }, [isTyping, messages, userProfile, user?.id, tools, stashedTools, triedTools]);
+
+  const handleSendMessage = useCallback(() => {
+    sendMessage(inputValue);
+  }, [inputValue, sendMessage]);
+
+  // Auto daily check-in & weekly reminders
+  const autoMessageSentRef = useRef(false);
+  useEffect(() => {
+    if (loading || isTyping || autoMessageSentRef.current) return;
+    if (messages.length === 0) return;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const lastCheckIn = localStorage.getItem('lastCheckInDate');
+    if (lastCheckIn === today) return;
+
+    autoMessageSentRef.current = true;
+    localStorage.setItem('lastCheckInDate', today);
+
+    // Calculate days until week ends (Sunday)
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ... 6=Sat
+    const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+
+    const firstName = profile?.name?.split(' ')[0] || 'there';
+
+    let autoMessage: string;
+
+    if (daysUntilSunday === 0) {
+      // End of week — reflection prompt
+      autoMessage = `Hey ${firstName}, another week wraps up! Take a moment to reflect — what clicked for you this week? What felt challenging? Writing it down helps lock in what you've learned and sets you up for an even better next week.`;
+    } else if (daysUntilSunday <= 3) {
+      // Countdown reminders (3, 2, or 1 days left)
+      const dayWord = daysUntilSunday === 1 ? 'day' : 'days';
+      autoMessage = `Hey ${firstName}, you've got ${daysUntilSunday} ${dayWord} left this week to hit your goals. How's it going — anything I can help you knock out today?`;
+    } else {
+      // Regular daily check-in
+      autoMessage = `Welcome back, ${firstName}! Ready to pick up where you left off? Let me know what you'd like to focus on today.`;
+    }
+
+    // Small delay so it feels natural after page load
+    const timer = setTimeout(() => {
+      const checkInMessage: ChatMessage = {
+        id: generateId(),
+        role: 'assistant',
+        content: autoMessage,
+      };
+      setMessages(prev => [...prev, checkInMessage]);
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [loading, isTyping, messages.length, profile?.name]);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -319,8 +372,6 @@ export default function Dashboard() {
     );
   }
 
-  const triedCount = triedTools.filter(id => tools.some(t => t.id === id)).length;
-
   return (
     <div className="flex w-full h-screen bg-royal fade-in">
       <Sidebar />
@@ -329,71 +380,50 @@ export default function Dashboard() {
         {/* Top 1/3: Compact Shadcn-style Accordion */}
         <div className="flex-shrink-0 max-h-[33vh] overflow-y-auto scrollbar-hide relative">
           <div className="px-6 lg:px-10 pt-6 pb-2">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <Sparkle size={18} className="text-chartreuse" weight="fill" />
-                <h2 className="text-sm font-semibold text-white/80 uppercase tracking-wider">Weekly Tools</h2>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-white/40 font-mono">{triedCount}/{tools.length} tried</span>
-                {stashedTools.length > 0 && <span className="text-[10px] text-white/25 font-mono">+{stashedTools.length} stashed</span>}
-              </div>
+            <div className="flex items-center gap-3 mb-3">
+              <Sparkle size={18} className="text-chartreuse" weight="fill" />
+              <h2 className="text-sm font-semibold text-white/80 uppercase tracking-wider">Weekly Tools</h2>
             </div>
 
-            {/* Accordion: vertically stacked headings that reveal details on click */}
+            {/* Accordion */}
             <div className="border border-white/10 rounded-xl overflow-hidden divide-y divide-white/[0.06]">
               {tools.map((tool, index) => (
                 <div key={tool.id} className="animate-fade-in-up" style={{ animationDelay: `${index * 80}ms` }}>
+                  {/* Collapsed: number, small square, name, tag, caret */}
                   <button
                     onClick={() => setExpandedTool(expandedTool === tool.id ? null : tool.id)}
                     className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.03] transition-all text-left"
                   >
                     <span className="text-[10px] text-white/20 font-mono w-5 shrink-0">{String(index + 1).padStart(2, '0')}</span>
-                    <div className={`w-7 h-7 rounded-lg ${tool.color} flex items-center justify-center shrink-0`}>
-                      <Robot size={12} className="text-royal" />
-                    </div>
+                    <span className="w-2.5 h-2.5 rounded-sm bg-phoenix shrink-0" />
                     <span className="font-medium text-white text-sm flex-1 truncate">{tool.name}</span>
-                    <span className="text-xs text-white/35 truncate max-w-[180px] hidden md:block">{tool.description}</span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.06] text-white/40 shrink-0 hidden sm:block">{tool.category}</span>
                     {triedTools.includes(tool.id) && <span className="w-1.5 h-1.5 rounded-full bg-chartreuse shrink-0" />}
                     <CaretDown size={12} className={`text-white/25 transition-transform duration-200 shrink-0 ${expandedTool === tool.id ? 'rotate-180' : ''}`} />
                   </button>
 
+                  {/* Expanded: description, Explore, Mark Tried, Swap */}
                   <div className={`overflow-hidden transition-all duration-200 ease-out ${expandedTool === tool.id ? 'max-h-32 opacity-100' : 'max-h-0 opacity-0'}`}>
                     <div className="px-4 pb-3 pt-1 bg-white/[0.02]">
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <div className={`w-9 h-9 rounded-xl ${tool.color} flex items-center justify-center shrink-0`}>
-                          <Robot size={16} className="text-royal" />
-                        </div>
-                        <div className="flex-1 min-w-[160px]">
-                          <h4 className="font-semibold text-white text-sm">{tool.name}</h4>
-                          <p className="text-[11px] text-white/45 mt-0.5 line-clamp-1">{tool.description}</p>
-                        </div>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.06] text-white/40">{tool.category}</span>
-                        <div className="flex items-center gap-1">
-                          {tool.website && <a href={tool.website} target="_blank" rel="noopener noreferrer" className="p-1 rounded hover:bg-white/10 text-white/30 hover:text-white"><Globe size={14} /></a>}
-                          {tool.twitter && <a href={tool.twitter} target="_blank" rel="noopener noreferrer" className="p-1 rounded hover:bg-white/10 text-white/30 hover:text-white"><XLogo size={14} /></a>}
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <a href={tool.website} target="_blank" rel="noopener noreferrer" className="px-2.5 py-1 rounded-lg bg-white/10 text-white text-[11px] font-medium hover:bg-white/20 transition-colors inline-flex items-center gap-1">
-                            Explore <ArrowUpRight size={10} />
-                          </a>
+                      <p className="text-[11px] text-white/45 mb-2 line-clamp-2 pl-[34px]">{tool.description}</p>
+                      <div className="flex items-center gap-1.5 pl-[34px]">
+                        <a href={tool.website} target="_blank" rel="noopener noreferrer" className="px-2.5 py-1 rounded-lg bg-white/10 text-white text-[11px] font-medium hover:bg-white/20 transition-colors inline-flex items-center gap-1">
+                          Explore <ArrowUpRight size={10} />
+                        </a>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleMarkAsTried(tool.id); }}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${triedTools.includes(tool.id) ? 'bg-chartreuse/20 text-chartreuse' : 'bg-white/5 text-white/35 hover:bg-white/10'}`}
+                        >
+                          {triedTools.includes(tool.id) ? 'Tried' : 'Mark Tried'}
+                        </button>
+                        {stashedTools.length > 0 && (
                           <button
-                            onClick={(e) => { e.stopPropagation(); handleMarkAsTried(tool.id); }}
-                            className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${triedTools.includes(tool.id) ? 'bg-chartreuse/20 text-chartreuse' : 'bg-white/5 text-white/35 hover:bg-white/10'}`}
+                            onClick={(e) => { e.stopPropagation(); swapTool(tool.id); }}
+                            className="px-2.5 py-1 rounded-lg bg-white/5 text-white/35 text-[11px] font-medium hover:bg-phoenix/20 hover:text-phoenix transition-colors"
                           >
-                            {triedTools.includes(tool.id) ? 'Tried' : 'Mark Tried'}
+                            Swap
                           </button>
-                          {stashedTools.length > 0 && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); swapTool(tool.id); }}
-                              className="px-2.5 py-1 rounded-lg bg-white/5 text-white/35 text-[11px] font-medium hover:bg-phoenix/20 hover:text-phoenix transition-colors"
-                              title="Swap with a different tool from stash"
-                            >
-                              Swap
-                            </button>
-                          )}
-                        </div>
+                        )}
                       </div>
                     </div>
                   </div>
