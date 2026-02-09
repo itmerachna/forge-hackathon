@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { FireSimple, EnvelopeSimple, Lock, ArrowRight, SpinnerGap } from '@phosphor-icons/react';
+import Image from 'next/image';
+import { EnvelopeSimple, Lock, ArrowRight, SpinnerGap } from '@phosphor-icons/react';
 import { useAuth } from '../../../lib/auth';
 
 export default function SignUpPage() {
@@ -45,12 +46,21 @@ export default function SignUpPage() {
         return;
       }
 
-      if (!result.session) {
+      // Supabase returns a user with empty identities for existing emails
+      // when email confirmation is enabled (to avoid leaking account existence)
+      if (result.user && result.user.identities?.length === 0) {
         setError('This email is already registered. Please sign in instead.');
         return;
       }
 
-      router.push('/auth/profile-setup');
+      // If session exists, email confirmation is disabled — proceed directly
+      if (result.session) {
+        router.push('/auth/profile-setup');
+        return;
+      }
+
+      // No session means email confirmation is required
+      setConfirmationSent(true);
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         setError('Request was interrupted. Please try again.');
@@ -63,21 +73,22 @@ export default function SignUpPage() {
   };
 
   return (
-    <div className="min-h-screen bg-royal flex flex-col items-center justify-center p-4">
+    <div className="h-screen bg-royal flex flex-col items-center justify-center p-4 relative overflow-hidden">
+      {/* Background — matches landing page */}
+      <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-maiden/30 to-transparent pointer-events-none" />
+      <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-phoenix/10 rounded-full blur-[120px] pointer-events-none" />
+
       {/* Logo */}
-      <Link href="/" className="mb-8 flex items-center gap-2 text-2xl font-serif italic font-bold text-white">
-        <div className="w-8 h-8 rounded-full bg-phoenix flex items-center justify-center text-royal">
-          <FireSimple size={20} weight="fill" />
-        </div>
-        Forge.
+      <Link href="/" className="mb-6 relative z-10">
+        <Image src="/forge-logo.svg" alt="Forge" width={120} height={48} priority />
       </Link>
 
       {/* Card */}
-      <div className="w-full max-w-md bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-8">
+      <div className="w-full max-w-[29rem] bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl px-8 py-6 relative z-10">
         {confirmationSent ? (
           <div className="text-center py-4">
             <EnvelopeSimple size={48} className="text-phoenix mx-auto mb-4" />
-            <h1 className="text-2xl font-serif text-white mb-2">Check your email</h1>
+            <h1 className="text-3xl font-serif text-white mb-2">Check your email</h1>
             <p className="text-magnolia/60 mb-6">
               We sent a confirmation link to <span className="text-white font-medium">{email}</span>. Click the link to activate your account, then come back and sign in.
             </p>
@@ -90,10 +101,10 @@ export default function SignUpPage() {
           </div>
         ) : (
         <>
-        <h1 className="text-2xl font-serif text-white mb-2 text-center">Create your account</h1>
-        <p className="text-magnolia/60 mb-8 text-center">Start your AI learning journey with Forge</p>
+        <h1 className="text-3xl font-serif text-white mb-1 text-center">Create your account</h1>
+        <p className="text-magnolia/60 mb-6 text-center text-sm">Start your AI learning journey with Forge</p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-3">
           {error && (
             <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
               {error}
@@ -101,14 +112,14 @@ export default function SignUpPage() {
           )}
 
           <div>
-            <label className="block text-sm text-magnolia/60 mb-2">Email</label>
+            <label className="block text-sm text-magnolia/60 mb-1.5">Email</label>
             <div className="relative">
               <EnvelopeSimple className="absolute left-3 top-1/2 -translate-y-1/2 text-magnolia/40" size={20} />
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-lg pl-10 pr-4 py-3 text-white placeholder:text-magnolia/30 focus:outline-none focus:border-phoenix transition-colors"
+                className="w-full bg-white/5 border border-white/10 rounded-lg pl-10 pr-4 py-2.5 text-white placeholder:text-magnolia/30 focus:outline-none focus:border-phoenix transition-colors"
                 placeholder="you@example.com"
                 required
               />
@@ -116,14 +127,14 @@ export default function SignUpPage() {
           </div>
 
           <div>
-            <label className="block text-sm text-magnolia/60 mb-2">Password</label>
+            <label className="block text-sm text-magnolia/60 mb-1.5">Password</label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-magnolia/40" size={20} />
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-lg pl-10 pr-4 py-3 text-white placeholder:text-magnolia/30 focus:outline-none focus:border-phoenix transition-colors"
+                className="w-full bg-white/5 border border-white/10 rounded-lg pl-10 pr-4 py-2.5 text-white placeholder:text-magnolia/30 focus:outline-none focus:border-phoenix transition-colors"
                 placeholder="••••••••"
                 required
               />
@@ -131,14 +142,14 @@ export default function SignUpPage() {
           </div>
 
           <div>
-            <label className="block text-sm text-magnolia/60 mb-2">Confirm Password</label>
+            <label className="block text-sm text-magnolia/60 mb-1.5">Confirm Password</label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-magnolia/40" size={20} />
               <input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-lg pl-10 pr-4 py-3 text-white placeholder:text-magnolia/30 focus:outline-none focus:border-phoenix transition-colors"
+                className="w-full bg-white/5 border border-white/10 rounded-lg pl-10 pr-4 py-2.5 text-white placeholder:text-magnolia/30 focus:outline-none focus:border-phoenix transition-colors"
                 placeholder="••••••••"
                 required
               />
@@ -148,7 +159,7 @@ export default function SignUpPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-phoenix text-white font-medium py-3 rounded-lg hover:bg-orange-600 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-phoenix text-white font-medium py-2.5 rounded-lg hover:bg-orange-600 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? (
               <SpinnerGap className="animate-spin" size={20} />
@@ -161,7 +172,7 @@ export default function SignUpPage() {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-magnolia/60 text-sm">
+        <p className="mt-4 text-center text-magnolia/60 text-sm">
           Already have an account?{' '}
           <Link href="/auth/login" className="text-phoenix hover:underline">
             Sign in
