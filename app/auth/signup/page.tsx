@@ -61,7 +61,12 @@ export default function SignUpPage() {
       }
 
       if (result.error) {
-        setError(result.error.message);
+        const msg = result.error.message?.toLowerCase() || '';
+        if (msg.includes('invalid login credentials') || msg.includes('invalid credentials')) {
+          setError('An account with this email already exists. Try signing in instead, or use "Forgot password" on the sign-in page.');
+        } else {
+          setError(result.error.message);
+        }
         return;
       }
 
@@ -75,28 +80,46 @@ export default function SignUpPage() {
       // If session exists, email confirmation is disabled — proceed directly
       if (result.session) {
         // Verify database access before redirecting (catches RLS issues early)
+        // Retry up to 3 times to handle transient Supabase failures
         if (supabase && result.user) {
-          const { error: dbError } = await supabase
-            .from('users')
-            .upsert({
-              id: result.user.id,
-              email: email,
-              name: '',
-              username: '',
-              bio: '',
-              avatar_url: '',
-              onboarding_completed: false,
-            }, { onConflict: 'id', ignoreDuplicates: true });
+          let dbSuccess = false;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            const { error: dbError } = await supabase
+              .from('users')
+              .upsert({
+                id: result.user.id,
+                email: email,
+                name: '',
+                username: '',
+                bio: '',
+                avatar_url: '',
+                onboarding_completed: false,
+              }, { onConflict: 'id', ignoreDuplicates: true });
 
-          if (dbError) {
+            if (!dbError) {
+              dbSuccess = true;
+              break;
+            }
+
             const isRLS = dbError.message?.includes('row-level security')
               || dbError.message?.includes('RLS')
               || dbError.code === '42501';
-            setError(isRLS
-              ? 'Row Level Security is blocking profile creation. Go to Supabase SQL Editor and run: ALTER TABLE users DISABLE ROW LEVEL SECURITY;'
-              : `Database error: ${dbError.message}`);
-            return;
+
+            if (isRLS) {
+              setError('Row Level Security is blocking profile creation. Go to Supabase SQL Editor and run: ALTER TABLE users DISABLE ROW LEVEL SECURITY;');
+              return;
+            }
+
+            // Transient error — retry after a short delay
+            if (attempt < 2) {
+              await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+            } else {
+              setError(`Database error after 3 attempts: ${dbError.message}`);
+              return;
+            }
           }
+
+          if (!dbSuccess) return;
         }
 
         router.push('/auth/profile-setup');

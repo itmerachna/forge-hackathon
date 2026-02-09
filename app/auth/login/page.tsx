@@ -9,11 +9,36 @@ import { useAuth } from '../../../lib/auth';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { signIn } = useAuth();
+  const { signIn, supabase } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      setError('Enter your email above first, then click Forgot password.');
+      return;
+    }
+    setError('');
+    setResetLoading(true);
+    try {
+      const { error } = await supabase!.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      });
+      if (error) {
+        setError(error.message);
+      } else {
+        setResetSent(true);
+      }
+    } catch {
+      setError('Could not send reset email. Try again.');
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,7 +72,12 @@ export default function LoginPage() {
       }
 
       if (result.error) {
-        setError(result.error.message);
+        const msg = result.error.message?.toLowerCase() || '';
+        if (msg.includes('invalid login credentials') || msg.includes('invalid credentials')) {
+          setError('Incorrect email or password. Try again or use Forgot password below.');
+        } else {
+          setError(result.error.message);
+        }
         return;
       }
 
@@ -115,6 +145,23 @@ export default function LoginPage() {
                 required
               />
             </div>
+          </div>
+
+          {resetSent && (
+            <div className="p-3 bg-chartreuse/10 border border-chartreuse/20 rounded-lg text-chartreuse text-sm">
+              Password reset link sent to <span className="font-medium">{email}</span>. Check your inbox.
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleForgotPassword}
+              disabled={resetLoading}
+              className="text-xs text-magnolia/40 hover:text-phoenix transition-colors disabled:opacity-50"
+            >
+              {resetLoading ? 'Sending...' : 'Forgot password?'}
+            </button>
           </div>
 
           <button

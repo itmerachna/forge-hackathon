@@ -71,24 +71,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       onboarding_completed: false,
     };
 
-    try {
-      const { error } = await supabase
-        .from('users')
-        .upsert(newProfile, { onConflict: 'id', ignoreDuplicates: true });
+    // Retry up to 3 times — covers Supabase cold starts and transient failures
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const { error } = await supabase
+          .from('users')
+          .upsert(newProfile, { onConflict: 'id', ignoreDuplicates: true });
 
-      if (error) {
-        console.error('Error ensuring profile:', error);
+        if (error) {
+          console.error(`ensureProfile attempt ${attempt + 1} failed:`, error.message);
+          if (attempt < 2) {
+            await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+            continue;
+          }
+        }
+
+        // Always fetch the latest profile — upsert with ignoreDuplicates
+        // doesn't return data when the row already exists
+        return await fetchProfile(authUser.id);
+      } catch (err) {
+        // Swallow AbortError from React StrictMode double-mount
+        if (err instanceof Error && err.name === 'AbortError') return null;
+        console.error(`ensureProfile attempt ${attempt + 1} threw:`, err);
+        if (attempt < 2) {
+          await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+          continue;
+        }
+        return null;
       }
-
-      // Always fetch the latest profile — upsert with ignoreDuplicates
-      // doesn't return data when the row already exists
-      return await fetchProfile(authUser.id);
-    } catch (err) {
-      // Swallow AbortError from React StrictMode double-mount
-      if (err instanceof Error && err.name === 'AbortError') return null;
-      console.error('Error in ensureProfile:', err);
-      return null;
     }
+    return null;
   };
 
   const refreshProfile = async () => {
