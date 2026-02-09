@@ -1,8 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
 import { isGeminiConfigured, getGeminiClient } from '../../../lib/gemini';
 import { getOpikClient } from '../../../lib/opik';
 import { supabase, isSupabaseConfigured } from '../../../lib/supabase';
 import { Opik } from 'opik';
+
+// Increase Vercel serverless timeout (max 60s on Hobby, 300s on Pro)
+export const maxDuration = 300;
 
 // Delay helper for rate limit avoidance
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -637,8 +640,36 @@ async function seedOpikDataset(opik: Opik) {
   return dataset;
 }
 
-// GET: Run all test cases as an Opik experiment
-export async function GET() {
+// GET: Run test cases as an Opik experiment
+// Supports batching via query params: ?batch=1&size=10 (batch 1 = tests 1-10, batch 2 = 11-20, etc.)
+// Or run all with ?batch=all (requires Pro plan with longer timeout)
+export async function GET(request: NextRequest) {
+  const url = new URL(request.url);
+  const batchParam = url.searchParams.get('batch') || '1';
+  const batchSize = parseInt(url.searchParams.get('size') || '10', 10);
+
+  // Determine which test cases to run
+  let testCasesToRun: typeof TEST_CASES;
+  let batchLabel: string;
+
+  if (batchParam === 'all') {
+    testCasesToRun = TEST_CASES;
+    batchLabel = 'all';
+  } else {
+    const batchNum = parseInt(batchParam, 10) || 1;
+    const start = (batchNum - 1) * batchSize;
+    const end = Math.min(start + batchSize, TEST_CASES.length);
+    testCasesToRun = TEST_CASES.slice(start, end);
+    batchLabel = `batch-${batchNum}`;
+
+    if (testCasesToRun.length === 0) {
+      return NextResponse.json({
+        error: `No test cases in batch ${batchNum} (total: ${TEST_CASES.length}, size: ${batchSize})`,
+        totalBatches: Math.ceil(TEST_CASES.length / batchSize),
+      }, { status: 400 });
+    }
+  }
+
   const results = [];
   let totalScore = 0;
   let passedCount = 0;
@@ -658,7 +689,7 @@ export async function GET() {
 
   // Create a named experiment for this run
   const runTimestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const experimentName = `forge-eval-${runTimestamp}`;
+  const experimentName = `forge-eval-${runTimestamp}-${batchLabel}`;
   let experimentId: string | undefined;
 
   if (opik && datasetName) {
@@ -670,6 +701,8 @@ export async function GET() {
           model: 'gemini-2.5-flash-lite',
           pass_threshold: 60,
           grounded_in_catalog: true,
+          batch: batchLabel,
+          batch_size: batchSize,
         },
       });
       experimentId = experiment.id;
@@ -682,33 +715,39 @@ export async function GET() {
   const toolCatalog = await loadToolCatalog();
 
   // Run test cases sequentially with delays to avoid Gemini rate limits
-  for (let i = 0; i < TEST_CASES.length; i++) {
-    const testCase = TEST_CASES[i];
+  for (let i = 0; i < testCasesToRun.length; i++) {
+    const testCase = testCasesToRun[i];
     const result = await evaluateTestCase(testCase, toolCatalog);
     results.push(result);
     totalScore += result.score;
     if (result.passed) passedCount++;
 
-    // 1.5s delay between requests to stay under Gemini rate limits
-    if (i < TEST_CASES.length - 1) {
-      await delay(1500);
+    // 1s delay between requests to stay under Gemini rate limits
+    if (i < testCasesToRun.length - 1) {
+      await delay(1000);
     }
   }
 
-  const avgScore = Math.round(totalScore / TEST_CASES.length);
+  const avgScore = Math.round(totalScore / testCasesToRun.length);
 
   // Flush Opik to ensure all traces/scores are sent
   if (opik) {
     await opik.flush();
   }
 
+  const totalBatches = Math.ceil(TEST_CASES.length / batchSize);
+
   return NextResponse.json({
     summary: {
-      total: TEST_CASES.length,
+      batch: batchLabel,
+      batchSize,
+      totalBatches,
+      testsInBatch: testCasesToRun.length,
+      totalTests: TEST_CASES.length,
       passed: passedCount,
-      failed: TEST_CASES.length - passedCount,
+      failed: testCasesToRun.length - passedCount,
       average_score: avgScore,
-      pass_rate: `${Math.round((passedCount / TEST_CASES.length) * 100)}%`,
+      pass_rate: `${Math.round((passedCount / testCasesToRun.length) * 100)}%`,
     },
     experiment: experimentId ? { id: experimentId, name: experimentName, dataset: datasetName } : undefined,
     results,
