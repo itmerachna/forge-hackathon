@@ -82,12 +82,10 @@ export default function Onboarding() {
     }
 
     try {
-      // Save preferences to the user profile
       await updateProfile({
         onboarding_completed: true,
       });
 
-      // Build a readable summary for Gemini's memory
       const lines = [
         `Focus: ${finalAnswers.focus || 'Not specified'}`,
         `Skill Level: ${finalAnswers.level || 'Not specified'}`,
@@ -97,7 +95,6 @@ export default function Onboarding() {
         finalAnswers.goal ? `Goal: ${finalAnswers.goal}` : null,
       ].filter(Boolean).join('\n');
 
-      // Save to persistent memory (correct payload format for /api/memories)
       await fetch('/api/memories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -108,7 +105,6 @@ export default function Onboarding() {
         }),
       }).catch(() => {});
 
-      // If user chose "Other" for focus, save extra context so Gemini understands their niche
       if (finalAnswers.focus && !['Visual & Graphic Design', 'Art & Illustration', 'UI/UX Design', 'Frontend Development', 'No-Code Tools', '3D/Motion Design'].includes(finalAnswers.focus)) {
         await fetch('/api/memories', {
           method: 'POST',
@@ -160,10 +156,14 @@ export default function Onboarding() {
   };
 
   return (
-    <div className="w-full h-screen flex bg-royal fade-in">
+    <div className="w-full h-screen flex bg-royal fade-in relative overflow-hidden">
+      {/* Background gradients — matches home page */}
+      <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-maiden/30 to-transparent pointer-events-none" />
+      <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-phoenix/10 rounded-full blur-[120px] pointer-events-none" />
+
       {/* Left Panel */}
-      <div className="w-1/3 bg-maiden hidden md:flex flex-col justify-between p-12 text-magnolia relative overflow-hidden">
-        <div className="relative z-10">
+      <div className="w-[38%] hidden md:flex flex-col justify-center p-12 relative z-10">
+        <div>
           <div className="mb-8">
             <Image src="/forge-logo.svg" alt="Forge" width={120} height={48} />
           </div>
@@ -172,105 +172,111 @@ export default function Onboarding() {
           </h2>
           <p className="text-white/50 font-mono text-sm">&mdash; Peter Drucker</p>
         </div>
-        <div className="absolute bottom-0 right-0 w-64 h-64 bg-chartreuse/20 rounded-full blur-[80px]" />
-        <div className="absolute top-1/2 left-[-50px] w-48 h-48 bg-phoenix/20 rounded-full blur-[60px]" />
       </div>
 
+      {/* Subtle divider */}
+      <div className="hidden md:block w-px bg-white/50" />
+
       {/* Right Panel */}
-      <div className="flex-1 flex flex-col justify-center items-center p-8 md:p-24 relative bg-royal">
-        <div className="w-full max-w-lg">
-          <div className="flex justify-between items-center mb-8">
-            <span className="text-xs font-bold tracking-widest text-white/40 uppercase">
-              {String(step + 1).padStart(2, '0')} / {String(totalSteps).padStart(2, '0')}
-            </span>
-            <a href="/" className="text-white/40 hover:text-white transition-colors">
-              <X size={20} />
-            </a>
-          </div>
-
-          {/* Progress Bar */}
-          <div className="w-full h-1 bg-white/10 rounded-full mb-12">
-            <div
-              className="h-full bg-phoenix rounded-full transition-all duration-500"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-
-          <h3 className="text-3xl font-serif text-white mb-3 slide-in" key={`q-${step}`}>
-            {currentQuestion.question}
-          </h3>
-
-          {'subtitle' in currentQuestion && currentQuestion.subtitle && (
-            <p className="text-white/40 text-sm mb-8">{currentQuestion.subtitle}</p>
-          )}
-
-          {!('subtitle' in currentQuestion) && <div className="mb-8" />}
-
-          {currentQuestion.type === 'text' ? (
-            <div className="slide-in" key={`a-${step}`}>
-              <textarea
-                className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-white mb-6 min-h-32 focus:outline-none focus:border-phoenix focus:ring-1 focus:ring-phoenix transition-all resize-none placeholder:text-white/30"
-                placeholder={currentQuestion.placeholder}
-                value={answers[currentQuestion.id] || ''}
-                onChange={(e) => setAnswers({ ...answers, [currentQuestion.id]: e.target.value })}
+      <div className="flex-1 flex flex-col h-full relative z-10">
+        {/* Fixed header: step counter + progress */}
+        <div className="px-8 md:px-16 pt-8">
+          <div className="w-full max-w-lg">
+            <div className="flex justify-between items-center mb-4">
+              <span className="text-xs font-bold tracking-widest text-white/40 uppercase">
+                {String(step + 1).padStart(2, '0')} / {String(totalSteps).padStart(2, '0')}
+              </span>
+              <a href="/" className="text-white/40 hover:text-white transition-colors">
+                <X size={20} />
+              </a>
+            </div>
+            <div className="w-full h-1 bg-white/10 rounded-full">
+              <div
+                className="h-full bg-phoenix rounded-full transition-all duration-500"
+                style={{ width: `${progress}%` }}
               />
             </div>
-          ) : (
-            <div className="space-y-3 mb-8 slide-in" key={`a-${step}`}>
-              {currentQuestion.options?.map((option) => (
-                <label
-                  key={option}
-                  className={`flex items-center p-4 border rounded-xl cursor-pointer transition-all group ${
-                    selectedOption === option
-                      ? 'border-phoenix bg-phoenix/10'
-                      : 'border-white/10 hover:border-phoenix/50 hover:bg-white/5'
-                  }`}
-                  onClick={() => { setSelectedOption(option); if (option !== 'Other') setOtherText(''); }}
-                >
-                  <input
-                    type="radio"
-                    name="onboarding"
-                    checked={selectedOption === option}
-                    onChange={() => { setSelectedOption(option); if (option !== 'Other') setOtherText(''); }}
-                    className="w-5 h-5 text-phoenix border-white/20 focus:ring-phoenix accent-phoenix"
-                  />
-                  <span className="ml-4 text-lg text-white/80 group-hover:text-white font-medium">{option}</span>
-                </label>
-              ))}
+          </div>
+        </div>
 
-              {/* Other text input */}
-              {selectedOption === 'Other' && (
-                <input
-                  type="text"
-                  value={otherText}
-                  onChange={(e) => setOtherText(e.target.value)}
-                  placeholder="Tell us what you work on..."
-                  className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-white placeholder:text-white/30 focus:outline-none focus:border-phoenix transition-colors mt-2"
-                  autoFocus
-                />
-              )}
-            </div>
-          )}
+        {/* Content area — fixed position for question, scrollable options */}
+        <div className="flex-1 flex flex-col justify-center px-8 md:px-16 pb-8">
+          <div className="w-full max-w-lg">
+            <h3 className="text-2xl font-serif text-white mb-2 slide-in" key={`q-${step}`}>
+              {currentQuestion.question}
+            </h3>
 
-          <div className="flex justify-between items-center">
-            {step > 0 ? (
-              <button
-                onClick={() => { setStep(step - 1); setSelectedOption(null); setOtherText(''); }}
-                className="text-white/40 hover:text-white transition-colors text-sm font-medium flex items-center gap-1"
-              >
-                <ArrowLeft size={14} />
-                Back
-              </button>
-            ) : (
-              <div />
+            {'subtitle' in currentQuestion && currentQuestion.subtitle && (
+              <p className="text-white/40 text-sm mb-6">{currentQuestion.subtitle}</p>
             )}
-            <button
-              onClick={handleContinue}
-              className="px-8 py-3 bg-phoenix text-white font-medium rounded-full hover:bg-orange-600 transition-colors flex items-center gap-2"
-            >
-              {step === QUESTIONS.length - 1 ? 'Finish Setup' : 'Continue'}
-              <ArrowRight size={16} />
-            </button>
+
+            {!('subtitle' in currentQuestion) && <div className="mb-6" />}
+
+            {currentQuestion.type === 'text' ? (
+              <div className="slide-in" key={`a-${step}`}>
+                <textarea
+                  className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-white mb-4 min-h-24 focus:outline-none focus:border-phoenix focus:ring-1 focus:ring-phoenix transition-all resize-none placeholder:text-white/30"
+                  placeholder={currentQuestion.placeholder}
+                  value={answers[currentQuestion.id] || ''}
+                  onChange={(e) => setAnswers({ ...answers, [currentQuestion.id]: e.target.value })}
+                />
+              </div>
+            ) : (
+              <div className="space-y-2 mb-4 slide-in" key={`a-${step}`}>
+                {currentQuestion.options?.map((option) => (
+                  <label
+                    key={option}
+                    className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all group ${
+                      selectedOption === option
+                        ? 'border-phoenix bg-phoenix/10'
+                        : 'border-white/10 hover:border-phoenix/50 hover:bg-white/5'
+                    }`}
+                    onClick={() => { setSelectedOption(option); if (option !== 'Other') setOtherText(''); }}
+                  >
+                    <input
+                      type="radio"
+                      name="onboarding"
+                      checked={selectedOption === option}
+                      onChange={() => { setSelectedOption(option); if (option !== 'Other') setOtherText(''); }}
+                      className="w-4 h-4 text-phoenix border-white/20 focus:ring-phoenix accent-phoenix"
+                    />
+                    <span className="ml-3 text-sm text-white/80 group-hover:text-white font-medium">{option}</span>
+                  </label>
+                ))}
+
+                {selectedOption === 'Other' && (
+                  <input
+                    type="text"
+                    value={otherText}
+                    onChange={(e) => setOtherText(e.target.value)}
+                    placeholder="Tell us what you work on..."
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-phoenix transition-colors mt-1"
+                    autoFocus
+                  />
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-between items-center mt-4">
+              {step > 0 ? (
+                <button
+                  onClick={() => { setStep(step - 1); setSelectedOption(null); setOtherText(''); }}
+                  className="text-white/40 hover:text-white transition-colors text-sm font-medium flex items-center gap-1"
+                >
+                  <ArrowLeft size={14} />
+                  Back
+                </button>
+              ) : (
+                <div />
+              )}
+              <button
+                onClick={handleContinue}
+                className="px-6 py-2.5 bg-phoenix text-white font-medium rounded-full hover:bg-orange-600 transition-colors flex items-center gap-2 text-sm"
+              >
+                {step === QUESTIONS.length - 1 ? 'Finish Setup' : 'Continue'}
+                <ArrowRight size={16} />
+              </button>
+            </div>
           </div>
         </div>
       </div>

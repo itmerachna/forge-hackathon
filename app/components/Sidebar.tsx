@@ -1,8 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
+import Image from 'next/image';
 import {
-  FireSimple,
   ChatCircleText,
   SquaresFour,
   ChartBar,
@@ -10,6 +10,8 @@ import {
   SignOut,
   CaretLeft,
   CaretRight,
+  Circle,
+  CheckCircle,
 } from '@phosphor-icons/react';
 import { useAuth } from '../../lib/auth';
 
@@ -19,6 +21,7 @@ export default function Sidebar() {
   const [userProfile, setUserProfile] = useState<Record<string, string> | null>(null);
   const [triedTools, setTriedTools] = useState<number[]>([]);
   const [collapsed, setCollapsed] = useState(false);
+  const [goalDone, setGoalDone] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -26,10 +29,17 @@ export default function Sidebar() {
     if (localProfile) setUserProfile(JSON.parse(localProfile));
     const tried = localStorage.getItem('triedTools');
     if (tried) setTriedTools(JSON.parse(tried));
+    const gd = localStorage.getItem('goalDone');
+    if (gd) setGoalDone(JSON.parse(gd));
   }, []);
 
-  // Calculate weekly goal progress based on tools tried (target: 3 tools/week)
-  const weeklyTarget = 3;
+  const toggleGoalDone = () => {
+    const next = !goalDone;
+    setGoalDone(next);
+    if (typeof window !== 'undefined') localStorage.setItem('goalDone', JSON.stringify(next));
+  };
+
+  const weeklyTarget = 5;
   const progress = Math.min(Math.round((triedTools.length / weeklyTarget) * 100), 100);
 
   const navItems = [
@@ -50,12 +60,15 @@ export default function Sidebar() {
       </button>
 
       <div>
-        {/* Logo — links to landing page */}
-        <a href="/" className="flex items-center gap-3 px-2 mb-12 text-white hover:opacity-80 transition-opacity">
-          <div className="w-8 h-8 rounded-lg bg-phoenix flex items-center justify-center text-white shrink-0">
-            <FireSimple size={18} weight="fill" />
-          </div>
-          {!collapsed && <span className="font-serif font-bold text-xl hidden lg:block tracking-tight">Forge</span>}
+        {/* Logo */}
+        <a href="/" className="flex items-center px-2 mb-12 hover:opacity-80 transition-opacity">
+          <Image
+            src="/forge-logo.svg"
+            alt="Forge"
+            width={collapsed ? 32 : 100}
+            height={32}
+            priority
+          />
         </a>
 
         {/* Navigation */}
@@ -87,21 +100,38 @@ export default function Sidebar() {
       <div>
         {/* Weekly Goal */}
         <div className={`p-4 bg-white/5 rounded-2xl mb-6 ${collapsed ? 'hidden' : 'hidden lg:block'}`}>
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-xs font-bold uppercase text-white/40">Weekly Goal</span>
-            <span className="text-xs font-bold text-white">{progress}%</span>
+          <span className="text-xs font-bold uppercase text-white/40 block mb-3">Weekly Goal</span>
+
+          {/* Tools tried progress */}
+          <div className="mb-3">
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-xs text-white/60">{triedTools.length}/{weeklyTarget} tools tried</span>
+              <span className="text-xs font-bold text-white">{progress}%</span>
+            </div>
+            <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-chartreuse transition-all duration-500"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
           </div>
-          <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-chartreuse transition-all duration-500"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          <p className="text-xs text-white/60 mt-2">
-            {userProfile?.goal
-              ? (userProfile.goal.length > 35 ? userProfile.goal.substring(0, 35) + '...' : userProfile.goal)
-              : `${triedTools.length}/${weeklyTarget} tools explored`}
-          </p>
+
+          {/* User goal with checkbox */}
+          {userProfile?.goal && (
+            <button
+              onClick={toggleGoalDone}
+              className="flex items-start gap-2 w-full text-left"
+            >
+              {goalDone ? (
+                <CheckCircle size={16} className="text-chartreuse shrink-0 mt-0.5" weight="fill" />
+              ) : (
+                <Circle size={16} className="text-white/30 shrink-0 mt-0.5" />
+              )}
+              <span className={`text-xs leading-snug ${goalDone ? 'text-chartreuse line-through' : 'text-white/60'}`}>
+                {userProfile.goal.length > 40 ? userProfile.goal.substring(0, 40) + '...' : userProfile.goal}
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Profile */}

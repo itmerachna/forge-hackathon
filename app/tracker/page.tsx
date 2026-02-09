@@ -54,17 +54,35 @@ export default function Tracker() {
     const triedIds = tried ? JSON.parse(tried) : [];
     setTriedTools(triedIds);
 
+    const WEEKLY_LIMIT = 5;
+
     async function fetchTools() {
       try {
-        const res = await fetch('/api/tools');
-        const data = await res.json();
-        if (data.tools?.length) {
-          setTools(data.tools.map((t: Tool) => ({ ...t, tried: triedIds.includes(t.id) })));
+        let toolsList: Tool[] = [];
+
+        // Fetch recommendations first (same as dashboard)
+        if (user?.id) {
+          const recRes = await fetch(`/api/recommendations?user_id=${user.id}`);
+          const recData = await recRes.json();
+          if (recData.recommendations?.length) {
+            toolsList = recData.recommendations.slice(0, WEEKLY_LIMIT);
+          }
         }
+
+        // Fallback to generic tools if no recommendations
+        if (toolsList.length === 0) {
+          const res = await fetch('/api/tools');
+          const data = await res.json();
+          if (data.tools?.length) {
+            toolsList = data.tools.slice(0, WEEKLY_LIMIT);
+          }
+        }
+
+        setTools(toolsList.map((t: Tool) => ({ ...t, tried: triedIds.includes(t.id) })));
       } catch { /* fallback */ } finally { setLoading(false); }
     }
     fetchTools();
-  }, []);
+  }, [user?.id]);
 
   const handleToggleTried = (toolId: number) => {
     let newTriedTools: number[];
@@ -121,7 +139,8 @@ export default function Tracker() {
     setProofUrl('');
   };
 
-  const triedCount = triedTools.length;
+  // Only count tools tried from the current weekly set
+  const triedCount = triedTools.filter(id => tools.some(t => t.id === id)).length;
   const totalCount = tools.length;
   const progressPercent = totalCount > 0 ? Math.round((triedCount / totalCount) * 100) : 0;
   const categories = [...new Set(tools.map(t => t.category))];
