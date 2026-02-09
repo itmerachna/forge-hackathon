@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { FireSimple, Camera, User, At, TextAlignLeft, ArrowRight, SpinnerGap } from '@phosphor-icons/react';
+import Image from 'next/image';
+import { Camera, User, At, TextAlignLeft, ArrowRight, SpinnerGap } from '@phosphor-icons/react';
 import { useAuth } from '../../../lib/auth';
 
 export default function ProfileSetupPage() {
@@ -80,48 +81,51 @@ export default function ProfileSetupPage() {
     setLoading(true);
 
     try {
-      // Check for duplicate username using shared client from context
-      if (supabase) {
-        const { data: existing } = await supabase
-          .from('users')
-          .select('id')
-          .eq('username', username.trim().toLowerCase())
-          .neq('id', user?.id || '')
-          .maybeSingle();
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Request timed out. Please try again in a moment.')), 15000)
+      );
 
-        if (existing) {
-          setError('Username is already taken. Please choose another.');
-          setLoading(false);
-          return;
+      const submitProfile = async () => {
+        // Check for duplicate username using shared client from context
+        if (supabase) {
+          const { data: existing } = await supabase
+            .from('users')
+            .select('id')
+            .eq('username', username.trim().toLowerCase())
+            .neq('id', user?.id || '')
+            .maybeSingle();
+
+          if (existing) {
+            throw new Error('Username is already taken. Please choose another.');
+          }
         }
-      }
 
-      let avatarUrl = profile?.avatar_url || '';
+        let avatarUrl = profile?.avatar_url || '';
 
-      if (avatarFile) {
-        avatarUrl = avatarPreview || '';
-      }
+        if (avatarFile) {
+          avatarUrl = avatarPreview || '';
+        }
 
-      const { error } = await updateProfile({
-        name: name.trim(),
-        username: username.trim().toLowerCase(),
-        bio: bio.trim(),
-        avatar_url: avatarUrl,
-      });
+        const { error } = await updateProfile({
+          name: name.trim(),
+          username: username.trim().toLowerCase(),
+          bio: bio.trim(),
+          avatar_url: avatarUrl,
+        });
 
-      if (error) {
-        setError(error.message);
-        setLoading(false);
-        return;
-      }
+        if (error) {
+          throw new Error(error.message || 'Failed to save profile. Please try again.');
+        }
+      };
+
+      await Promise.race([submitProfile(), timeoutPromise]);
 
       router.push('/onboarding');
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
-        // React StrictMode double-mount — retry once
         setError('Request was interrupted. Please try again.');
       } else {
-        setError('Something went wrong. Please try again.');
+        setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
       }
     } finally {
       setLoading(false);
@@ -130,28 +134,29 @@ export default function ProfileSetupPage() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-royal flex items-center justify-center">
+      <div className="h-screen bg-royal flex items-center justify-center">
         <SpinnerGap className="animate-spin text-phoenix" size={40} />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-royal flex flex-col items-center justify-center p-4">
+    <div className="h-screen bg-royal flex flex-col items-center justify-center p-4 relative overflow-hidden">
+      {/* Background — matches landing page */}
+      <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-maiden/30 to-transparent pointer-events-none" />
+      <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-phoenix/10 rounded-full blur-[120px] pointer-events-none" />
+
       {/* Logo */}
-      <div className="mb-8 flex items-center gap-2 text-2xl font-serif italic font-bold text-white">
-        <div className="w-8 h-8 rounded-full bg-phoenix flex items-center justify-center text-royal">
-          <FireSimple size={20} weight="fill" />
-        </div>
-        Forge.
+      <div className="mb-6 relative z-10">
+        <Image src="/forge-logo.svg" alt="Forge" width={120} height={48} priority />
       </div>
 
       {/* Card */}
-      <div className="w-full max-w-md bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-8">
-        <h1 className="text-2xl font-serif text-white mb-2 text-center">Set up your profile</h1>
-        <p className="text-magnolia/60 mb-8 text-center">Tell us a bit about yourself</p>
+      <div className="w-full max-w-[29rem] bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl px-8 py-5 relative z-10">
+        <h1 className="text-3xl font-serif text-white mb-1 text-center">Set up your profile</h1>
+        <p className="text-magnolia/60 mb-4 text-center text-sm">Tell us a bit about yourself</p>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-3">
           {error && (
             <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
               {error}
@@ -159,19 +164,19 @@ export default function ProfileSetupPage() {
           )}
 
           {/* Avatar */}
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center gap-1">
             <button
               type="button"
               onClick={handleAvatarClick}
-              className="relative w-24 h-24 rounded-full bg-white/10 border-2 border-dashed border-white/20 hover:border-phoenix transition-colors overflow-hidden group"
+              className="relative w-16 h-16 rounded-full bg-white/10 border-2 border-dashed border-white/20 hover:border-phoenix transition-colors overflow-hidden group"
             >
               {avatarPreview ? (
                 <img src={avatarPreview} alt="Avatar" className="w-full h-full object-cover" />
               ) : (
-                <User className="w-full h-full p-6 text-magnolia/40" />
+                <User className="w-full h-full p-4 text-magnolia/40" />
               )}
               <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                <Camera size={24} className="text-white" />
+                <Camera size={20} className="text-white" />
               </div>
             </button>
             <input
@@ -181,19 +186,19 @@ export default function ProfileSetupPage() {
               onChange={handleAvatarChange}
               className="hidden"
             />
+            <p className="text-magnolia/40 text-xs">Click to upload photo</p>
           </div>
-          <p className="text-center text-magnolia/40 text-xs">Click to upload photo</p>
 
           {/* Name */}
           <div>
-            <label className="block text-sm text-magnolia/60 mb-2">Display Name</label>
+            <label className="block text-sm text-magnolia/60 mb-1.5">Display Name</label>
             <div className="relative">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 text-magnolia/40" size={20} />
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-lg pl-10 pr-4 py-3 text-white placeholder:text-magnolia/30 focus:outline-none focus:border-phoenix transition-colors"
+                className="w-full bg-white/5 border border-white/10 rounded-lg pl-10 pr-4 py-2.5 text-white placeholder:text-magnolia/30 focus:outline-none focus:border-phoenix transition-colors"
                 placeholder="Your name"
                 maxLength={50}
                 required
@@ -203,14 +208,14 @@ export default function ProfileSetupPage() {
 
           {/* Username */}
           <div>
-            <label className="block text-sm text-magnolia/60 mb-2">Username</label>
+            <label className="block text-sm text-magnolia/60 mb-1.5">Username</label>
             <div className="relative">
               <At className="absolute left-3 top-1/2 -translate-y-1/2 text-magnolia/40" size={20} />
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value.toLowerCase())}
-                className="w-full bg-white/5 border border-white/10 rounded-lg pl-10 pr-4 py-3 text-white placeholder:text-magnolia/30 focus:outline-none focus:border-phoenix transition-colors"
+                className="w-full bg-white/5 border border-white/10 rounded-lg pl-10 pr-4 py-2.5 text-white placeholder:text-magnolia/30 focus:outline-none focus:border-phoenix transition-colors"
                 placeholder="username"
                 maxLength={30}
                 required
@@ -220,25 +225,25 @@ export default function ProfileSetupPage() {
 
           {/* Bio */}
           <div>
-            <label className="block text-sm text-magnolia/60 mb-2">Bio (optional)</label>
+            <label className="block text-sm text-magnolia/60 mb-1.5">Bio (optional)</label>
             <div className="relative">
               <TextAlignLeft className="absolute left-3 top-3 text-magnolia/40" size={20} />
               <textarea
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-lg pl-10 pr-4 py-3 text-white placeholder:text-magnolia/30 focus:outline-none focus:border-phoenix transition-colors resize-none"
+                className="w-full bg-white/5 border border-white/10 rounded-lg pl-10 pr-4 py-2.5 text-white placeholder:text-magnolia/30 focus:outline-none focus:border-phoenix transition-colors resize-none"
                 placeholder="Tell us about yourself..."
-                rows={3}
+                rows={2}
                 maxLength={160}
               />
             </div>
-            <p className="text-right text-magnolia/40 text-xs mt-1">{bio.length}/160</p>
+            <p className="text-right text-magnolia/40 text-xs mt-0.5">{bio.length}/160</p>
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-phoenix text-white font-medium py-3 rounded-lg hover:bg-orange-600 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-phoenix text-white font-medium py-2.5 rounded-lg hover:bg-orange-600 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? (
               <SpinnerGap className="animate-spin" size={20} />

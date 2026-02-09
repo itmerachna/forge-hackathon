@@ -10,7 +10,7 @@ interface AuthContextType {
   session: Session | null;
   supabase: SupabaseClient | null;
   loading: boolean;
-  signUp: (email: string, password: string) => Promise<{ error: Error | null; session: Session | null }>;
+  signUp: (email: string, password: string) => Promise<{ error: Error | null; session: Session | null; user: SupabaseUser | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<User>) => Promise<{ error: Error | null }>;
@@ -72,19 +72,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('users')
-        .upsert(newProfile, { onConflict: 'id', ignoreDuplicates: true })
-        .select()
-        .maybeSingle();
+        .upsert(newProfile, { onConflict: 'id', ignoreDuplicates: true });
 
       if (error) {
         console.error('Error ensuring profile:', error);
-        // If upsert failed, try fetching — the row may already exist
-        return await fetchProfile(authUser.id);
       }
 
-      return data as User | null;
+      // Always fetch the latest profile — upsert with ignoreDuplicates
+      // doesn't return data when the row already exists
+      return await fetchProfile(authUser.id);
     } catch (err) {
       // Swallow AbortError from React StrictMode double-mount
       if (err instanceof Error && err.name === 'AbortError') return null;
@@ -164,11 +162,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (email: string, password: string) => {
     if (!supabase) {
-      return { error: new Error('Supabase not configured'), session: null };
+      return { error: new Error('Supabase not configured'), session: null, user: null };
     }
 
     const { data, error } = await supabase.auth.signUp({ email, password });
-    return { error: error as Error | null, session: data?.session ?? null };
+    return { error: error as Error | null, session: data?.session ?? null, user: data?.user ?? null };
   };
 
   const signIn = async (email: string, password: string) => {
@@ -195,12 +193,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updateProfile = async (updates: Partial<User>) => {
     if (!supabase || !user) return { error: new Error('Not authenticated') };
 
-    // Use upsert so it works even if ensureProfile failed
+    // Use upsert so it works even if ensureProfile failed.
+    // Include all required fields with fallbacks so INSERT case succeeds.
     const { error } = await supabase
       .from('users')
       .upsert({
         id: user.id,
         email: user.email || '',
+        name: profile?.name ?? '',
+        username: profile?.username ?? '',
+        bio: profile?.bio ?? '',
+        avatar_url: profile?.avatar_url ?? '',
+        onboarding_completed: profile?.onboarding_completed ?? false,
         ...updates,
         updated_at: new Date().toISOString(),
       });
