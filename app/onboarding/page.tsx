@@ -2,12 +2,12 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  FireSimple,
   X,
   ArrowRight,
   ArrowLeft,
   SpinnerGap,
 } from '@phosphor-icons/react';
+import Image from 'next/image';
 import { useAuth } from '../../lib/auth';
 
 const QUESTIONS = [
@@ -164,8 +164,8 @@ export default function Onboarding() {
       {/* Left Panel */}
       <div className="w-1/3 bg-maiden hidden md:flex flex-col justify-between p-12 text-magnolia relative overflow-hidden">
         <div className="relative z-10">
-          <div className="w-10 h-10 rounded-full bg-phoenix flex items-center justify-center text-white mb-8">
-            <FireSimple size={24} weight="fill" />
+          <div className="mb-8">
+            <Image src="/forge-logo.svg" alt="Forge" width={120} height={48} />
           </div>
           <h2 className="font-serif text-4xl leading-tight mb-6 text-white">
             &ldquo;The best way to predict the future is to create it.&rdquo;

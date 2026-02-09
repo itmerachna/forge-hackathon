@@ -6,11 +6,11 @@ import Link from 'next/link';
 
 export default function Home() {
   return (
-    <div className="w-full h-screen bg-royal text-magnolia flex items-center justify-center relative overflow-hidden fade-in">
-      {/* Centered Content Group — shifted up for better visual balance */}
-      <div className="flex flex-col items-center text-center px-4 relative z-10 -mt-12">
-        {/* Logo — 2x size, pushed up 50px */}
-        <div className="mb-8 -mt-[50px]">
+    <div className="w-full h-screen bg-royal text-magnolia flex flex-col items-center relative overflow-hidden fade-in">
+      {/* Centered Content Group — equal top/bottom spacing */}
+      <div className="flex-1 flex flex-col items-center justify-center text-center px-4 relative z-10 pb-[50px]">
+        {/* Logo — 2x size */}
+        <div className="mb-8">
           <Image
             src="/forge-logo.svg"
             alt="Forge"
@@ -21,7 +21,7 @@ export default function Home() {
         </div>
 
         {/* Version Badge */}
-        <div className="mb-6 inline-flex items-center gap-2 px-4 py-1 rounded-full border border-white/10 bg-white/5 backdrop-blur-sm text-xs uppercase tracking-widest text-chartreuse">
+        <div className="mb-6 inline-flex items-center gap-2 px-6 py-1.5 rounded-full border border-white/10 bg-white/5 backdrop-blur-sm text-xs uppercase tracking-widest text-chartreuse">
           <span className="w-2 h-2 rounded-full bg-phoenix animate-pulse" />
           v.00 is now live
         </div>
@@ -40,7 +40,7 @@ export default function Home() {
         {/* CTA Button */}
         <Link
           href="/auth/signup"
-          className="px-5 py-2.5 bg-phoenix text-white font-medium text-sm rounded-full hover:bg-orange-600 transition-colors shadow-glow flex items-center gap-2 group"
+          className="px-6 py-2.5 bg-phoenix text-white font-medium text-sm rounded-full hover:bg-orange-600 transition-colors shadow-glow flex items-center gap-2 group"
         >
           Get Started
           <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
