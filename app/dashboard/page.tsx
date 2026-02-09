@@ -202,13 +202,13 @@ export default function Dashboard() {
     }
   };
 
-  const handleSendMessage = useCallback(async () => {
-    if (!inputValue.trim() || isTyping) return;
+  const sendMessage = useCallback(async (text: string) => {
+    if (!text.trim() || isTyping) return;
 
     const userMessage: ChatMessage = {
       id: generateId(),
       role: 'user',
-      content: inputValue.trim(),
+      content: text.trim(),
       timestamp: new Date().toISOString(),
     };
 
@@ -301,7 +301,58 @@ export default function Dashboard() {
       setIsTyping(false);
       setMessages(prev => [...prev, { id: assistantMessageId, role: 'assistant', content: "I'm having trouble connecting right now. Please try again in a moment." }]);
     }
-  }, [inputValue, isTyping, messages, userProfile]);
+  }, [isTyping, messages, userProfile, user?.id, tools, stashedTools, triedTools]);
+
+  const handleSendMessage = useCallback(() => {
+    sendMessage(inputValue);
+  }, [inputValue, sendMessage]);
+
+  // Auto daily check-in & weekly reminders
+  const autoMessageSentRef = useRef(false);
+  useEffect(() => {
+    if (loading || isTyping || autoMessageSentRef.current) return;
+    if (messages.length === 0) return;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const lastCheckIn = localStorage.getItem('lastCheckInDate');
+    if (lastCheckIn === today) return;
+
+    autoMessageSentRef.current = true;
+    localStorage.setItem('lastCheckInDate', today);
+
+    // Calculate days until week ends (Sunday)
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ... 6=Sat
+    const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+
+    const firstName = profile?.name?.split(' ')[0] || 'there';
+
+    let autoMessage: string;
+
+    if (daysUntilSunday === 0) {
+      // End of week — reflection prompt
+      autoMessage = `Hey ${firstName}, another week wraps up! Take a moment to reflect — what clicked for you this week? What felt challenging? Writing it down helps lock in what you've learned and sets you up for an even better next week.`;
+    } else if (daysUntilSunday <= 3) {
+      // Countdown reminders (3, 2, or 1 days left)
+      const dayWord = daysUntilSunday === 1 ? 'day' : 'days';
+      autoMessage = `Hey ${firstName}, you've got ${daysUntilSunday} ${dayWord} left this week to hit your goals. How's it going — anything I can help you knock out today?`;
+    } else {
+      // Regular daily check-in
+      autoMessage = `Welcome back, ${firstName}! Ready to pick up where you left off? Let me know what you'd like to focus on today.`;
+    }
+
+    // Small delay so it feels natural after page load
+    const timer = setTimeout(() => {
+      const checkInMessage: ChatMessage = {
+        id: generateId(),
+        role: 'assistant',
+        content: autoMessage,
+      };
+      setMessages(prev => [...prev, checkInMessage]);
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [loading, isTyping, messages.length, profile?.name]);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
